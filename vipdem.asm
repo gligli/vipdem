@@ -11,9 +11,9 @@ slot 2 $8000
 .endme
 
 .rombankmap
-bankstotal 4
+bankstotal 8
 banksize $4000
-banks 4
+banks 8
 .endro
 
 ;==============================================================
@@ -94,6 +94,7 @@ banks 4
 ;==============================================================
 
 .enum $c000 export
+    MonoFB            dsb 768
     CurFrameIdx       dw
 .ende
 
@@ -120,8 +121,7 @@ init_tab: ; table must exist within first 1K of ROM
     ex af, af'
 
     in a, (VDPControl)
-    or a
-    jp m, VBlankInt
+
     in a, (VDPScanline)
     and $04
     or $fb
@@ -189,22 +189,22 @@ main:
         inc iy
     .endr
 
-    ld a, $02
+    ld a, $04
     ld (MapperSlot1), a
-    ld a, $03
+    ld a, $05
     ld (MapperSlot2), a
 
-    ; Output tilemap data
-    SetVDPAddress $2800 | VRAMWrite
-    ld hl, AnimData + $20
-    call UploadMonoFB
-
-    SetVDPAddress $3800 | VRAMWrite
-    ld hl, AnimData
-    call UploadMonoFB
+;     ; Output tilemap data
+;     SetVDPAddress $2800 | VRAMWrite
+;     ld hl, AnimData + $20
+;     call UploadMonoFB
+; 
+;     SetVDPAddress $3800 | VRAMWrite
+;     ld hl, AnimData
+;     call UploadMonoFB
 
     ; turn screen on
-    ld a, %1100010
+    ld a, %1000010
 ;          ||||||`- Zoomed sprites -> 16x16 pixels
 ;          |||||`-- Doubled sprites -> 2 tiles per sprite, 8x16
 ;          ||||`--- Mega Drive mode 5 enable
@@ -216,31 +216,68 @@ main:
     ld a, $81
     out (VDPControl), a
 
+    in a, (VDPControl) ; ack any previous int
     ei
 
 MainLoop:
-    halt
-    jp MainLoop
+    in a, (VDPScanline)
+    cp 192
+    jr c, MainLoop
+p0:
 
-VBlankInt:
     ld a, (CurFrameIdx)
     inc a
     ld (CurFrameIdx), a
 
+    ld d, a
+
+    and 1
+    jp z, +
+    SetVDPAddress $2800 | VRAMWrite
+    ld e, $00
+    jp ++
++:
+    SetVDPAddress $3800 | VRAMWrite
+    ld e, $20
+++:
+
+    xor a
+    ld hl, MonoFB
+    ld c, VDPData
+    .repeat 768
+        outi
+        out (VDPData), a
+    .endr
+p1:
+
+    ld hl, AnimData
+
+    ld a, e
+    add a, l
+    ld l, a
+
+    ld a, d
     and $0f
     .repeat 3
         rlca
     .endr
-
-    ld hl, AnimData
-    or h
+    add a, h
     ld h, a
-    ;SetVDPAddress $3800 | VRAMWrite
-    ;call UploadMonoFB
 
-    ex af, af'
-    ei
-    reti
+    ld a, d
+    and $10
+    .repeat 3
+        rrca
+    .endr
+    or $04
+    ld (MapperSlot1), a
+    or $05
+    ld (MapperSlot2), a
+
+    ld de, MonoFB
+    call UpdateMonoFB
+p2:
+    jp MainLoop
 
 CopyToVDP:
 ; Copies data to the VDP
@@ -255,46 +292,42 @@ CopyToVDP:
     jr nz,-
     ret
 
-UploadMonoFB:
-    ld b, 24
+UpdateMonoFB:
+    ld ixl, 16
 -:
     .repeat 16 index idx
         res 4, l
-        ld d, (hl)
+        ld b, (hl)
         set 4, l
-        ld e, (hl)
+        ld c, (hl)
 
-        ld a, d
+        ld a, b
         and $0f
-        ld c, a
-        
-        .ifneq idx 0
-            xor a
-            out (VDPData), a
-        .endif
+        ld  ixh, a
 
-        ld a, e
+        ld a, c
         .repeat 4
-            rlca
+            rrca
         .endr
         and $f0
-        or c
-        out (VDPData), a
+        or ixh
 
-        ld a, d
+        ld (de), a
+        inc de
+
+        ld a, b
         .repeat 4
             rrca
         .endr
         and $0f
-        ld c, a
+        ld ixh, a
 
-        xor a
-        out (VDPData), a
-
-        ld a, e
+        ld a, c
         and $f0
-        or c
-        out (VDPData), a
+        or ixh
+
+        ld (de), a
+        inc de
 
         .ifneq idx 15
             inc l
@@ -309,10 +342,7 @@ UploadMonoFB:
     sub l
     ld h, a
 
-    xor a
-    out (VDPData), a
-
-    dec b
+    dec ixl
     jp nz, -
 
     ret
@@ -357,7 +387,7 @@ MonoFBData:
 .incbin "MonoFB.bin" fsize MonoFBSize
 
 .incdir "anim_128_1/"
-.bank 2 slot 1
+.bank 4 slot 1
 .org $0000
 AnimData:
 .incbin "0000.mono"
@@ -368,7 +398,7 @@ AnimData:
 .incbin "0005.mono"
 .incbin "0006.mono"
 .incbin "0007.mono"
-.bank 3 slot 2
+.bank 5 slot 2
 .org $0000
 .incbin "0008.mono"
 .incbin "0009.mono"
@@ -378,3 +408,23 @@ AnimData:
 .incbin "0013.mono"
 .incbin "0014.mono"
 .incbin "0015.mono"
+.bank 6 slot 1
+.org $0000
+.incbin "0016.mono"
+.incbin "0017.mono"
+.incbin "0018.mono"
+.incbin "0019.mono"
+.incbin "0020.mono"
+.incbin "0021.mono"
+.incbin "0022.mono"
+.incbin "0023.mono"
+.bank 7 slot 2
+.org $0000
+.incbin "0024.mono"
+.incbin "0025.mono"
+.incbin "0026.mono"
+.incbin "0027.mono"
+.incbin "0028.mono"
+.incbin "0029.mono"
+.incbin "0030.mono"
+.incbin "0031.mono"
