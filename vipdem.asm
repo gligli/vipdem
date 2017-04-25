@@ -189,11 +189,11 @@ main:
         inc iy
     .endr
 
-    ld a, $04
-    ld (MapperSlot1), a
-    ld a, $05
-    ld (MapperSlot2), a
-
+;     ld a, $04
+;     ld (MapperSlot1), a
+;     ld a, $05
+;     ld (MapperSlot2), a
+; 
 ;     ; Output tilemap data
 ;     SetVDPAddress $2800 | VRAMWrite
 ;     ld hl, AnimData + $20
@@ -257,7 +257,7 @@ p1:
     ld l, a
 
     ld a, d
-    and $0f
+    and $07
     .repeat 3
         rlca
     .endr
@@ -265,14 +265,12 @@ p1:
     ld h, a
 
     ld a, d
-    and $10
+    and $18
     .repeat 3
         rrca
     .endr
     or $04
     ld (MapperSlot1), a
-    or $05
-    ld (MapperSlot2), a
 
     ld de, MonoFB
     call UpdateMonoFB
@@ -293,54 +291,57 @@ CopyToVDP:
     ret
 
 UpdateMonoFB:
-    ld ixl, 16
+    ld ixl, 2
 -:
-    .repeat 16 index idx
-        res 4, l
-        ld b, (hl)
-        set 4, l
-        ld c, (hl)
+    .repeat 8 index y_idx
+        .repeat 16 index x_idx
+            res 4, l
+            ld b, (hl)
+            set 4, l
+            ld c, (hl)
 
-        ld a, b
-        and $0f
-        ld  ixh, a
+            ld a, b
+            and $0f
+            ld  ixh, a
 
-        ld a, c
-        .repeat 4
-            rrca
+            ld a, c
+            .repeat 4
+                rrca
+            .endr
+            and $f0
+            or ixh
+
+            ld (de), a
+            inc e
+
+            ld a, b
+            .repeat 4
+                rrca
+            .endr
+            and $0f
+            ld ixh, a
+
+            ld a, c
+            and $f0
+            or ixh
+
+            ld (de), a
+            inc e
+
+            .ifneq x_idx 15
+                inc l
+            .endif
         .endr
-        and $f0
-        or ixh
 
-        ld (de), a
-        inc de
-
-        ld a, b
-        .repeat 4
-            rrca
-        .endr
-        and $0f
-        ld ixh, a
-
-        ld a, c
-        and $f0
-        or ixh
-
-        ld (de), a
-        inc de
-
-        .ifneq idx 15
-            inc l
+        ld a, l
+        add a, $40 - 15
+        ld l, a
+        .ifeq (y_idx & 3) 3
+            inc h
         .endif
     .endr
 
-    ld a, l
-    and $e0
-    add a, $40
-    ld l, a
-    adc a, h
-    sub l
-    ld h, a
+    inc d
 
     dec ixl
     jp nz, -
