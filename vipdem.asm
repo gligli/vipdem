@@ -89,6 +89,14 @@ banks 8
     ex af, af'
 .endm
 
+.macro AddAToHL
+    add a, l
+    ld l, a
+    adc a, h
+    sub l
+    ld h, a
+.endm
+
 ;==============================================================
 ; RAM variables
 ;==============================================================
@@ -119,18 +127,24 @@ init_tab: ; table must exist within first 1K of ROM
 
 .org $0038
     ex af, af'
-
     in a, (VDPControl)
+    ei
 
     in a, (VDPScanline)
+
     and $04
     or $fb
+
+    .repeat 5
+        inc iy
+        dec iy
+    .endr
+
     out (VDPControl), a
     ld a, $82
     out (VDPControl), a
 
     ex af, af'
-    ei
     reti
 
 .org $0066
@@ -233,12 +247,10 @@ p0:
 
     and 1
     jp z, +
-    SetVDPAddress $2800 | VRAMWrite
-    ld e, $00
+    SetVDPAddress $3800 | VRAMWrite
     jp ++
 +:
-    SetVDPAddress $3800 | VRAMWrite
-    ld e, $20
+    SetVDPAddress $2800 | VRAMWrite
 ++:
 
     xor a
@@ -247,30 +259,45 @@ p0:
     .repeat 768
         outi
         out (VDPData), a
-    .endr
+    .endr   
+
+    ; temporal de-dither using X scroll
+;     ld a, d
+;     and 1
+;     rlca
+;     out (VDPControl), a
+;     ld a, $88
+;     out (VDPControl), a
+
 p1:
 
-    ld hl, AnimData
-
-    ld a, e
-    add a, l
-    ld l, a
-
+    ; anim slot
     ld a, d
-    and $07
-    .repeat 3
-        rlca
-    .endr
-    add a, h
-    ld h, a
-
-    ld a, d
-    and $18
-    .repeat 3
+    and $30
+    .repeat 4
         rrca
     .endr
     or $04
-    ld (MapperSlot1), a
+    ld (MapperSlot2), a
+
+    ; anim source pointer
+    ld hl, AnimData
+    ld a, d
+    and $01
+    add a, h
+    ld h, a
+
+    ; bit mask in b
+    ld b, $80
+    ld a, d
+    and $0e
+    rrca
+    jp z, +
+    -:
+        srl b
+        dec a
+        jp nz, -
+    +:
 
     ld de, MonoFB
     call UpdateMonoFB
@@ -290,57 +317,69 @@ CopyToVDP:
     jr nz,-
     ret
 
-UpdateMonoFB:
-    ld ixl, 2
--:
-    .repeat 8 index y_idx
-        .repeat 16 index x_idx
-            res 4, l
-            ld b, (hl)
-            set 4, l
-            ld c, (hl)
 
-            ld a, b
-            and $0f
-            ld  ixh, a
+RotoZoomMonoFB:
+    ld ix, $0000
+    ld iy, $0000
+    exx
+    ld hl, $0000
+    ld bc, $0100
+    ld de, $0010
+    exx
 
-            ld a, c
-            .repeat 4
-                rrca
-            .endr
+    push hl
+    .repeat 16*0 index x_byte
+        .repeat 8 index x_bit
+            exx
+            add ix, bc ; x = x + vx
+            add iy, de ; y = y + vy
+            exx
+            ; y offset
+            ld a, iyh
+            and $07 ; 128px wrap
+            ld b, a
+            ld a, iyl
             and $f0
-            or ixh
-
-            ld (de), a
-            inc e
-
-            ld a, b
-            .repeat 4
-                rrca
-            .endr
-            and $0f
-            ld ixh, a
-
-            ld a, c
-            and $f0
-            or ixh
-
-            ld (de), a
-            inc e
-
-            .ifneq x_idx 15
-                inc l
-            .endif
+            ld c, a
+            add hl, bc
+            ; x offset
+            ld a, ixh
+            and $7f ; 128px wrap
+            AddAToHL
+            push hl
         .endr
 
-        ld a, l
-        add a, $40 - 15
-        ld l, a
-        .ifeq (y_idx & 3) 3
-            inc h
-        .endif
+
+    .endr
+    pop hl
+
+
+UpdateMonoFB:
+    ex de, hl
+    ld ixl, 24
+-:
+    .repeat 32 index x_byte
+        .repeat 4 index x_bit
+            res 7, e
+            ld a, (de)
+            and b
+            cp b
+            rr c
+
+            set 7, e
+            ld a, (de)
+            and b
+            cp b
+            rr c
+
+            inc e
+        .endr
+
+        ld (hl), c
+        inc hl
     .endr
 
+    inc d
     inc d
 
     dec ixl
@@ -364,10 +403,10 @@ VDPInitData:
 VDPInitDataEnd:
 
 LocalPalette:
-.db $ff
-.db $55
-.db $aa
 .db $00
+.db $aa
+.db $55
+.db $ff
 .repeat 28 index idx
     .db (idx + 4) * 1.5
 .endr
@@ -388,44 +427,16 @@ MonoFBData:
 .incbin "MonoFB.bin" fsize MonoFBSize
 
 .incdir "anim_128_1/"
-.bank 4 slot 1
+.bank 4 slot 2
 .org $0000
 AnimData:
-.incbin "0000.mono"
-.incbin "0001.mono"
-.incbin "0002.mono"
-.incbin "0003.mono"
-.incbin "0004.mono"
-.incbin "0005.mono"
-.incbin "0006.mono"
-.incbin "0007.mono"
+.incbin "anim1.bin"
 .bank 5 slot 2
 .org $0000
-.incbin "0008.mono"
-.incbin "0009.mono"
-.incbin "0010.mono"
-.incbin "0011.mono"
-.incbin "0012.mono"
-.incbin "0013.mono"
-.incbin "0014.mono"
-.incbin "0015.mono"
-.bank 6 slot 1
+.incbin "anim2.bin"
+.bank 6 slot 2
 .org $0000
-.incbin "0016.mono"
-.incbin "0017.mono"
-.incbin "0018.mono"
-.incbin "0019.mono"
-.incbin "0020.mono"
-.incbin "0021.mono"
-.incbin "0022.mono"
-.incbin "0023.mono"
+.incbin "anim3.bin"
 .bank 7 slot 2
 .org $0000
-.incbin "0024.mono"
-.incbin "0025.mono"
-.incbin "0026.mono"
-.incbin "0027.mono"
-.incbin "0028.mono"
-.incbin "0029.mono"
-.incbin "0030.mono"
-.incbin "0031.mono"
+.incbin "anim4.bin"
