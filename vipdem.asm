@@ -360,19 +360,17 @@ UpdateMonoFB:
 -:
     .repeat 32 index x_byte
         .repeat 4 index x_bit
-            res 7, e
+            ld e, 4 * x_byte + x_bit
             ld a, (de)
             and b
             cp b
             rr c
 
-            set 7, e
+            ld e, 128 + 4 * x_byte + x_bit
             ld a, (de)
             and b
             cp b
             rr c
-
-            inc e
         .endr
 
         ld (hl), c
