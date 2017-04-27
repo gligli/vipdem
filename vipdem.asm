@@ -146,8 +146,8 @@ banks 8
 .bank 0 slot 0
 .org $0000
     di              ; disable interrupts
-    im 1            ; Interrupt mode 1
-    ; This maps the first 48K of ROM to $0000-$BFFF
+    im 1            ; interrupt mode 1
+    ; this maps the first 48K of ROM to $0000-$BFFF
     ld de, $FFFC
     ld hl, init_tab
     ld bc, $0004
@@ -184,6 +184,8 @@ init_tab: ; table must exist within first 1K of ROM
     jp 0
 
 main:
+    ; set up stack
+    
     ld sp, $dff0
 
     ; set up VDP registers
@@ -193,6 +195,18 @@ main:
     ld c,VDPControl
     otir
 
+    ; clear RAM
+
+    ld hl, $c000
+    ld b, $00
+-:
+    ld (hl), b
+    inc hl
+    ld a,h
+    sub $e0
+    or l
+    jr nz,-
+    
     ; clear VRAM
 
     ; 1. cet VRAM write address to $0000
@@ -217,7 +231,7 @@ main:
     ld (CurFrameIdx), a
     ld (CurFrameIdx + $01), a
 
-    ; Init RotoZoom
+    ; init RotoZoom
     ld hl, $0100
     ld (RotoVX), hl
     ld hl, $0100
@@ -225,7 +239,7 @@ main:
     ld a, 1
     ld (DoAnim), a
     
-    ; Load tiles (Monochrome framebuffer emulation)
+    ; load tiles (Monochrome framebuffer emulation)
     SetVDPAddress $0000 | VRAMWrite
     ld hl,MonoFBData
     ld bc,MonoFBSize
@@ -244,20 +258,6 @@ main:
         inc iy
     .endr
 
-;     ld a, $04
-;     ld (MapperSlot1), a
-;     ld a, $05
-;     ld (MapperSlot2), a
-; 
-;     ; Output tilemap data
-;     SetVDPAddress $2800 | VRAMWrite
-;     ld hl, AnimData + $20
-;     call UploadMonoFB
-; 
-;     SetVDPAddress $3800 | VRAMWrite
-;     ld hl, AnimData
-;     call UploadMonoFB
-
     ; turn screen on
     ld a, %1000010
 ;          ||||||`- Zoomed sprites -> 16x16 pixels
@@ -273,6 +273,8 @@ main:
 
     in a, (VDPControl) ; ack any previous int
     ei
+    
+    jp MainLoopStart
 
 MainLoop:
     in a, (VDPScanline)
@@ -358,7 +360,7 @@ p0:
         ld (RotoVX), hl
 +:
 
-p1:
+MainLoopStart:
     ; anim slot
     ld a, d
     and $30
@@ -477,7 +479,7 @@ CopyToVDP:
 RotoZoomMonoFB:
     ld de, MonoFB
     ex de, hl
-    ld iyl, 24
+    ld iyl, 23
 
     exx
     ld ix, 0 ; x
