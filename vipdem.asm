@@ -320,7 +320,7 @@ p0:
     ld bc, $0004
     bit 4, a
     jp nz, +
-        ld bc, $0040
+        ld bc, $0100
 +:
     bit 5, a
     jp nz, +
@@ -516,7 +516,7 @@ RotoZoomMonoFB:
         .endif
     .endr
 
-    ; odd line
+    ; odd line, reverse direction (zig-zag)
     
     exx
     NegateDE ; vy = - vy
@@ -543,15 +543,17 @@ RotoZoomMonoFB:
         .endif
     .endr
     
+    ; advance to next line pair
+    
     ld a, 32
     AddAToHL;
     
-    ; advance to next line pair
-    
     exx
+    RotoZoomX 1, 0, 0
+    RotoZoomY 1, 0, 0
     NegateBC ; vx = - vx
-    RotoZoomX 4, 1, 0
-    RotoZoomY 2, 1, 0
+    RotoZoomX 3, 1, 0
+    RotoZoomY 3, 1, 0
     NegateDE ; vy = - vy
     exx
     
