@@ -217,7 +217,7 @@ main:
     ; Init RotoZoom
     ld hl, $0100
     ld (RotoVX), hl
-    ld hl, $0000
+    ld hl, $0100
     ld (RotoVY), hl
     ld a, 1
     ld (DoAnim), a
@@ -312,10 +312,10 @@ p0:
 
     ; RotoZoom control using D-Pad
     in a, (IOPortA)
-    ld bc, $0010
+    ld bc, $0004
     bit 4, a
     jp nz, +
-        ld bc, $0100
+        ld bc, $0040
 +:
     bit 5, a
     jp nz, +
@@ -404,7 +404,7 @@ CopyToVDP:
 
 
 
-.macro RotoZoomX args twice, other, negate
+.macro RotoZoomX args times, other, negate
     ; x offset
     .ifeq negate 1
         .ifeq other 1
@@ -413,7 +413,7 @@ CopyToVDP:
             NegateBC
         .endif
     .endif
-    .repeat twice + 1
+    .repeat times
         .ifeq other 1
             add ix, de
         .else
@@ -429,39 +429,63 @@ CopyToVDP:
     .endif
 .endm
 
-.macro RotoZoomY args twice, other, negate
+.macro RotoZoomY args times, other, negate
     ; y offset
     .ifeq negate 1
-        .ifeq other 1
-            NegateBC
-        .else
-            NegateDE
-        .endif
+        or a ; clear carry
     .endif
-    .repeat twice + 1
-        .ifeq other 1
-            add iy, bc
+    .repeat times
+        .ifeq negate 1
+            .ifeq other 1
+                sbc hl, bc
+            .else
+                sbc hl, de
+            .endif
         .else
-            add iy, de
+            .ifeq other 1
+                add hl, bc
+            .else
+                add hl, de
+            .endif
         .endif
     .endr
-    .ifeq negate 1
-        .ifeq other 1
-            NegateBC
-        .else
-            NegateDE
-        .endif
-    .endif
+
+    ; .ifeq negate 1
+        ; .ifeq other 1
+            ; NegateBC
+        ; .else
+            ; NegateDE
+        ; .endif
+    ; .endif
+    ; .repeat times
+        ; .ifeq other 1
+            ; add iy, bc
+        ; .else
+            ; add iy, de
+        ; .endif
+    ; .endr
+    ; .ifeq negate 1
+        ; .ifeq other 1
+            ; NegateBC
+        ; .else
+            ; NegateDE
+        ; .endif
+    ; .endif
 .endm
 
-.macro RotoZoomGetPixel
-    ld a, iyh
+.macro RotoZoomPreGetPixel
+    ; y coord
+    ld a, h
     or $80 ; 128px wrap + slot 1 address
-    rra
+    rra ; extra y bit out
+.endm
+    
+.macro RotoZoomGetPixel
     ld d, a
-        
+
+    ; x coord
     ld e, ixh
-    rl e ; 128px wrap + y bit include
+    rl e ; 128px wrap + extra y bit include
 
     ld a, (de)
     and b
@@ -471,11 +495,11 @@ CopyToVDP:
 
 RotoZoomMonoFB:
     ex de, hl
-
-    ld ix, 0 ; x
-    ld iy, 0 ; y
+    ld iyl, 16
 
     exx
+    ld ix, 0 ; x
+    ld hl, 0 ; y
     ld bc, (RotoVX) ; vx
     ld de, (RotoVY) ; vy
     exx
@@ -484,21 +508,25 @@ RotoZoomMonoFB:
     and 1
     jp z, +
     exx
-    RotoZoomX 1, 1, 1
-    RotoZoomY 1, 1, 0
+    RotoZoomX 2, 1, 1
+    RotoZoomY 2, 1, 0
     exx
 +:
 
 -:
+    exx
     push ix
-    push iy
+    push hl
+    exx
+    
     .repeat 32 index x_byte
         .repeat 4 index x_bit
+            exx
+            RotoZoomX 1, 0, 0
+            RotoZoomY 1, 0, 0
+            RotoZoomPreGetPixel
+            exx
             RotoZoomGetPixel
-            exx
-            RotoZoomX 0, 0, 0
-            RotoZoomY 0, 0, 0
-            exx
         .endr
         ld (hl), c
         .ifneq x_byte 31
@@ -506,14 +534,14 @@ RotoZoomMonoFB:
         .endif
     .endr
 
-    pop iy
+    exx
+    pop hl
     pop ix
-    exx
-    RotoZoomX 0, 1, 1
-    RotoZoomY 0, 1, 0
-    exx
+    RotoZoomX 1, 1, 1
+    RotoZoomY 1, 1, 0
     push ix
-    push iy
+    push hl
+    exx
 
     ld a, l
     sub 31
@@ -522,26 +550,26 @@ RotoZoomMonoFB:
     .repeat 32 index x_byte
         ld c, (hl)
         .repeat 4 index x_bit
+            exx
+            RotoZoomX 1, 0, 0
+            RotoZoomY 1, 0, 0
+            RotoZoomPreGetPixel
+            exx
             RotoZoomGetPixel
-            exx
-            RotoZoomX 0, 0, 0
-            RotoZoomY 0, 0, 0
-            exx
         .endr
         ld (hl), c
         inc hl
     .endr
     
-    pop iy
+    exx
+    pop hl
     pop ix
+    RotoZoomX 3, 1, 1
+    RotoZoomY 3, 1, 0
     exx
-    RotoZoomX 2, 1, 1
-    RotoZoomY 2, 1, 0
-    exx
-
-    ld a, h
-    cp $c3
-    jp c, -
+    
+    dec iyl
+    jp nz, -
 
     ret
 
