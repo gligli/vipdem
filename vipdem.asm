@@ -519,10 +519,10 @@ RotoZoomMonoFB:
     ; odd line
     
     exx
-    NegateDE
+    NegateDE ; vy = - vy
     RotoZoomX 1, 1, 0
     RotoZoomY 1, 1, 0
-    NegateBC
+    NegateBC ; vx = - vx
     exx
     
     .repeat 32 index x_byte
@@ -549,10 +549,10 @@ RotoZoomMonoFB:
     ; advance to next line pair
     
     exx
-    NegateBC
+    NegateBC ; vx = - vx
     RotoZoomX 4, 1, 0
     RotoZoomY 2, 1, 0
-    NegateDE
+    NegateDE ; vy = - vy
     exx
     
     dec iyl
