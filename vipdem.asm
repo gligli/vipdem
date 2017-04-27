@@ -30,6 +30,7 @@ banks 8
 .define VDPData $be
 .define VDPScanline $7e
 .define PSGPort $7f
+.define IOPortA $DC
 .define VRAMRead $0000
 .define VRAMWrite $4000
 .define CRAMWrite $c000
@@ -97,6 +98,32 @@ banks 8
     ld h, a
 .endm
 
+.macro AddAToDE
+    add a, e
+    ld e, a
+    adc a, d
+    sub e
+    ld d, a
+.endm
+
+.macro NegateDE
+    xor a
+    sub e
+    ld e,a
+    sbc a,a
+    sub d
+    ld d,a
+.endm
+
+.macro NegateBC
+    xor a
+    sub c
+    ld c,a
+    sbc a,a
+    sub b
+    ld b,a
+.endm
+
 ;==============================================================
 ; RAM variables
 ;==============================================================
@@ -104,6 +131,8 @@ banks 8
 .enum $c000 export
     MonoFB            dsb 768
     CurFrameIdx       dw
+    RotoVX            dw ; (8.8 fixed point)
+    RotoVY            dw ; (8.8 fixed point)
 .ende
 
 ;==============================================================
@@ -145,7 +174,7 @@ init_tab: ; table must exist within first 1K of ROM
     out (VDPControl), a
 
     ex af, af'
-    reti
+    ret
 
 .org $0066
     jp 0
@@ -183,6 +212,12 @@ main:
     xor a
     ld (CurFrameIdx), a
     ld (CurFrameIdx + $01), a
+
+    ; Init RotoZoom
+    ld hl, $0100
+    ld (RotoVX), hl
+    ld hl, $0100
+    ld (RotoVY), hl
 
     ; Load tiles (Monochrome framebuffer emulation)
     SetVDPAddress $0000 | VRAMWrite
@@ -236,11 +271,12 @@ main:
 MainLoop:
     in a, (VDPScanline)
     cp 192
-    jr c, MainLoop
+    jp c, MainLoop
 p0:
 
     ld a, (CurFrameIdx)
     inc a
+;    and 1
     ld (CurFrameIdx), a
 
     ld d, a
@@ -268,6 +304,40 @@ p0:
 ;     out (VDPControl), a
 ;     ld a, $88
 ;     out (VDPControl), a
+
+    ; RotoZoom control using D-Pad
+    in a, (IOPortA)
+    ld bc, $0010
+    bit 4, a
+    jp nz, +
+        ld bc, $0100
++:
+    bit 0, a
+    jp nz, +
+        ld hl, (RotoVY)
+        or a
+        sbc hl, bc
+        ld (RotoVY), hl
++:
+    bit 1, a
+    jp nz, +
+        ld hl, (RotoVY)
+        add hl, bc
+        ld (RotoVY), hl
++:
+    bit 2, a
+    jp nz, +
+        ld hl, (RotoVX)
+        or a
+        sbc hl, bc
+        ld (RotoVX), hl
++:
+    bit 3, a
+    jp nz, +
+        ld hl, (RotoVX)
+        add hl, bc
+        ld (RotoVX), hl
++:
 
 p1:
 
@@ -300,7 +370,8 @@ p1:
     +:
 
     ld de, MonoFB
-    call UpdateMonoFB
+    call RotoZoomMonoFB
+;    call UpdateMonoFB
 p2:
     jp MainLoop
 
@@ -318,47 +389,131 @@ CopyToVDP:
     ret
 
 
+
+.macro RotoZoomX args twice, other, negate
+    ; x offset
+    .ifeq negate 1
+        .ifeq other 1
+            NegateDE
+        .else
+            NegateBC
+        .endif
+    .endif
+    .repeat twice + 1
+        .ifeq other 1
+            add ix, de
+        .else
+            add ix, bc
+        .endif
+    .endr
+    .ifeq negate 1
+        .ifeq other 1
+            NegateDE
+        .else
+            NegateBC
+        .endif
+    .endif
+.endm
+
+.macro RotoZoomY args twice, other, negate
+    ; y offset
+    .ifeq negate 1
+        .ifeq other 1
+            NegateBC
+        .else
+            NegateDE
+        .endif
+    .endif
+    .repeat twice + 1
+        .ifeq other 1
+            add iy, bc
+        .else
+            add iy, de
+        .endif
+    .endr
+    .ifeq negate 1
+        .ifeq other 1
+            NegateBC
+        .else
+            NegateDE
+        .endif
+    .endif
+.endm
+
+.macro RotoZoomGetPixel
+    ld a, ixh
+;    and $7f ; 128px wrap
+    rlca
+    ld e, a
+    ld a, iyh
+    and $7f ; 128px wrap
+    scf ; Add $8000 (Slot 2 address)
+    rra
+    rr e
+    ld d, a
+
+    ld a, (de)
+    and b
+    cp b
+    rr c
+.endm
+
 RotoZoomMonoFB:
-    ld ix, $0000
-    ld iy, $0000
+    ex de, hl
+
     exx
-    ld hl, $0000
-    ld bc, $0100
-    ld de, $0010
+    ld ix, 0 ; x
+    ld iy, 0 ; y
+    ld bc, (RotoVX) ; vx
+    ld de, (RotoVY) ; vy
     exx
 
-    push hl
-    .repeat 16*0 index x_byte
-        .repeat 8 index x_bit
+    ld a, d
+    and 1
+    jp z, +
+    exx
+    RotoZoomX 0, 1, 1
+    RotoZoomY 0, 1, 0
+    exx
++:
+
+-:
+    push ix
+    push iy
+    .repeat 32 index x_byte
+        .repeat 4 index x_bit
             exx
-            add ix, bc ; x = x + vx
-            add iy, de ; y = y + vy
+            RotoZoomX 0, 0, 0
             exx
-            ; y offset
-            ld a, iyh
-            and $07 ; 128px wrap
-            ld b, a
-            ld a, iyl
-            and $f0
-            ld c, a
-            add hl, bc
-            ; x offset
-            ld a, ixh
-            and $7f ; 128px wrap
-            AddAToHL
-            push hl
+            RotoZoomGetPixel
+            exx
+            RotoZoomY 0, 0, 0
+            exx
+            RotoZoomGetPixel
         .endr
 
-
+        ld (hl), c
+        inc hl
     .endr
-    pop hl
 
+    pop iy
+    pop ix
+    exx
+    RotoZoomX 1, 1, 1
+    RotoZoomY 1, 1, 0
+    exx
+
+    ld a, h
+    cp $c3
+    jp c, -
+
+    ret
 
 UpdateMonoFB:
     ex de, hl
     ld ixl, 24
 -:
-    .repeat 32 index x_byte
+    .repeat 0*32 index x_byte
         .repeat 4 index x_bit
             ld e, 4 * x_byte + x_bit
             ld a, (de)
