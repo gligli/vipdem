@@ -133,6 +133,7 @@ banks 8
     CurFrameIdx       dw
     RotoVX            dw ; (8.8 fixed point)
     RotoVY            dw ; (8.8 fixed point)
+    DoAnim            db
 .ende
 
 ;==============================================================
@@ -216,9 +217,11 @@ main:
     ; Init RotoZoom
     ld hl, $0100
     ld (RotoVX), hl
-    ld hl, $0100
+    ld hl, $0000
     ld (RotoVY), hl
-
+    ld a, 1
+    ld (DoAnim), a
+    
     ; Load tiles (Monochrome framebuffer emulation)
     SetVDPAddress $0000 | VRAMWrite
     ld hl,MonoFBData
@@ -276,11 +279,13 @@ p0:
 
     ld a, (CurFrameIdx)
     inc a
-;    and 1
     ld (CurFrameIdx), a
-
+    
     ld d, a
-
+    ld a, (DoAnim)
+    and d
+    ld d, a
+    
     and 1
     jp z, +
     SetVDPAddress $3800 | VRAMWrite
@@ -311,6 +316,15 @@ p0:
     bit 4, a
     jp nz, +
         ld bc, $0100
++:
+    bit 5, a
+    jp nz, +
+        push af
+        ld a, (DoAnim)
+        cpl
+        or 1
+        ld (DoAnim), a
+        pop af
 +:
     bit 0, a
     jp nz, +
@@ -348,7 +362,7 @@ p1:
         rrca
     .endr
     or $04
-    ld (MapperSlot2), a
+    ld (MapperSlot1), a
 
     ; anim source pointer
     ld hl, AnimData
@@ -371,7 +385,7 @@ p1:
 
     ld de, MonoFB
     call RotoZoomMonoFB
-;    call UpdateMonoFB
+    ; call UpdateMonoFB
 p2:
     jp MainLoop
 
@@ -441,16 +455,13 @@ CopyToVDP:
 .endm
 
 .macro RotoZoomGetPixel
-    ld a, ixh
-;    and $7f ; 128px wrap
-    rlca
-    ld e, a
     ld a, iyh
-    and $7f ; 128px wrap
-    scf ; Add $8000 (Slot 2 address)
+    or $80 ; 128px wrap + slot 1 address
     rra
-    rr e
     ld d, a
+        
+    ld e, ixh
+    rl e ; 128px wrap + y bit include
 
     ld a, (de)
     and b
@@ -461,9 +472,10 @@ CopyToVDP:
 RotoZoomMonoFB:
     ex de, hl
 
-    exx
     ld ix, 0 ; x
     ld iy, 0 ; y
+
+    exx
     ld bc, (RotoVX) ; vx
     ld de, (RotoVY) ; vy
     exx
@@ -472,8 +484,8 @@ RotoZoomMonoFB:
     and 1
     jp z, +
     exx
-    RotoZoomX 0, 1, 1
-    RotoZoomY 0, 1, 0
+    RotoZoomX 1, 1, 1
+    RotoZoomY 1, 1, 0
     exx
 +:
 
@@ -482,25 +494,49 @@ RotoZoomMonoFB:
     push iy
     .repeat 32 index x_byte
         .repeat 4 index x_bit
+            RotoZoomGetPixel
             exx
             RotoZoomX 0, 0, 0
-            exx
-            RotoZoomGetPixel
-            exx
             RotoZoomY 0, 0, 0
             exx
-            RotoZoomGetPixel
         .endr
-
         ld (hl), c
-        inc hl
+        .ifneq x_byte 31
+            inc hl
+        .endif
     .endr
 
     pop iy
     pop ix
     exx
-    RotoZoomX 1, 1, 1
-    RotoZoomY 1, 1, 0
+    RotoZoomX 0, 1, 1
+    RotoZoomY 0, 1, 0
+    exx
+    push ix
+    push iy
+
+    ld a, l
+    sub 31
+    ld l, a
+    
+    .repeat 32 index x_byte
+        ld c, (hl)
+        .repeat 4 index x_bit
+            RotoZoomGetPixel
+            exx
+            RotoZoomX 0, 0, 0
+            RotoZoomY 0, 0, 0
+            exx
+        .endr
+        ld (hl), c
+        inc hl
+    .endr
+    
+    pop iy
+    pop ix
+    exx
+    RotoZoomX 2, 1, 1
+    RotoZoomY 2, 1, 0
     exx
 
     ld a, h
@@ -513,15 +549,16 @@ UpdateMonoFB:
     ex de, hl
     ld ixl, 24
 -:
-    .repeat 0*32 index x_byte
+    .repeat 32 index x_byte
         .repeat 4 index x_bit
-            ld e, 4 * x_byte + x_bit
+            ld e, (4 * x_byte + x_bit) * 2
             ld a, (de)
             and b
             cp b
             rr c
-
-            ld e, 128 + 4 * x_byte + x_bit
+        .endr
+        .repeat 4 index x_bit
+            ld e, (4 * x_byte + x_bit) * 2 + 1
             ld a, (de)
             and b
             cp b
@@ -580,16 +617,16 @@ MonoFBData:
 .incbin "MonoFB.bin" fsize MonoFBSize
 
 .incdir "anim_128_1/"
-.bank 4 slot 2
+.bank 4 slot 1
 .org $0000
 AnimData:
 .incbin "anim1.bin"
-.bank 5 slot 2
+.bank 5 slot 1
 .org $0000
 .incbin "anim2.bin"
-.bank 6 slot 2
+.bank 6 slot 1
 .org $0000
 .incbin "anim3.bin"
-.bank 7 slot 2
+.bank 7 slot 1
 .org $0000
 .incbin "anim4.bin"

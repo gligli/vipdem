@@ -1,5 +1,5 @@
-mogrify -ordered-dither 1x1 -depth 1 -format mono *.bmp
-mogrify -ordered-dither 1x1 -depth 1 -format png *.bmp
+mogrify -ordered-dither 2x1 -depth 1 -format mono *.bmp
+mogrify -ordered-dither 2x1 -depth 1 -format png *.bmp
 
 ../Bits2Byte/Bits2Byte anim1.bin 0000.mono 0001.mono 0002.mono 0003.mono 0004.mono 0005.mono 0006.mono 0007.mono
 ../Bits2Byte/Bits2Byte anim2.bin 0008.mono 0009.mono 0010.mono 0011.mono 0012.mono 0013.mono 0014.mono 0015.mono
