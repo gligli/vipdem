@@ -42,8 +42,8 @@ begin
         case y of
           0, 4: pixels[tile, cTileWidth * y + x] := (tile shr (x shr 1)) and 1;
           1, 5: pixels[tile, cTileWidth * y + x] := ((tile shr (x shr 1)) and 1) + 2;
-          2, 6: pixels[tile, cTileWidth * y + x] := (tile shr (4 + (x shr 1))) and 1;
-          3, 7: pixels[tile, cTileWidth * y + x] := ((tile shr (4 + (x shr 1))) and 1) + 2;
+          2, 6: pixels[tile, cTileWidth * y + x] := (tile shr (7 - (x shr 1))) and 1;
+          3, 7: pixels[tile, cTileWidth * y + x] := ((tile shr (7 - (x shr 1))) and 1) + 2;
         end;
       end;
   end;

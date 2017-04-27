@@ -129,8 +129,11 @@ banks 8
 ;==============================================================
 
 .enum $c000 export
-    MonoFB            dsb 768
+    MonoFB            dsb 1024
+    SPSave            dw
     CurFrameIdx       dw
+    RotoX             dw ; (8.8 fixed point)
+    RotoY             dw ; (8.8 fixed point)
     RotoVX            dw ; (8.8 fixed point)
     RotoVY            dw ; (8.8 fixed point)
     DoAnim            db
@@ -277,10 +280,12 @@ MainLoop:
     jp c, MainLoop
 p0:
 
+    ; frame index advance 
     ld a, (CurFrameIdx)
     inc a
     ld (CurFrameIdx), a
-    
+
+    ; animation index
     ld d, a
     ld a, (DoAnim)
     and d
@@ -354,7 +359,6 @@ p0:
 +:
 
 p1:
-
     ; anim slot
     ld a, d
     and $30
@@ -383,7 +387,6 @@ p1:
         jp nz, -
     +:
 
-    ld de, MonoFB
     call RotoZoomMonoFB
     ; call UpdateMonoFB
 p2:
@@ -449,28 +452,6 @@ CopyToVDP:
             .endif
         .endif
     .endr
-
-    ; .ifeq negate 1
-        ; .ifeq other 1
-            ; NegateBC
-        ; .else
-            ; NegateDE
-        ; .endif
-    ; .endif
-    ; .repeat times
-        ; .ifeq other 1
-            ; add iy, bc
-        ; .else
-            ; add iy, de
-        ; .endif
-    ; .endr
-    ; .ifeq negate 1
-        ; .ifeq other 1
-            ; NegateBC
-        ; .else
-            ; NegateDE
-        ; .endif
-    ; .endif
 .endm
 
 .macro RotoZoomPreGetPixel
@@ -494,8 +475,9 @@ CopyToVDP:
 .endm
 
 RotoZoomMonoFB:
+    ld de, MonoFB
     ex de, hl
-    ld iyl, 16
+    ld iyl, 24
 
     exx
     ld ix, 0 ; x
@@ -513,11 +495,11 @@ RotoZoomMonoFB:
     exx
 +:
 
+    ; ld (SPSave), sp
+    ; ld sp, MonoFB + 1024
+
 -:
-    exx
-    push ix
-    push hl
-    exx
+    ; even line
     
     .repeat 32 index x_byte
         .repeat 4 index x_bit
@@ -534,46 +516,54 @@ RotoZoomMonoFB:
         .endif
     .endr
 
+    ; odd line
+    
     exx
-    pop hl
-    pop ix
-    RotoZoomX 1, 1, 1
+    NegateDE
+    RotoZoomX 1, 1, 0
     RotoZoomY 1, 1, 0
-    push ix
-    push hl
+    NegateBC
     exx
-
-    ld a, l
-    sub 31
-    ld l, a
     
     .repeat 32 index x_byte
         ld c, (hl)
         .repeat 4 index x_bit
             exx
-            RotoZoomX 1, 0, 0
-            RotoZoomY 1, 0, 0
+            .ifneq (4 * x_byte + x_bit) 0
+                RotoZoomX 1, 0, 0
+                RotoZoomY 1, 0, 0
+            .endif
             RotoZoomPreGetPixel
             exx
             RotoZoomGetPixel
         .endr
         ld (hl), c
-        inc hl
+        .ifneq x_byte 31
+            dec hl
+        .endif
     .endr
     
+    ld a, 32
+    AddAToHL;
+    
+    ; advance to next line pair
+    
     exx
-    pop hl
-    pop ix
-    RotoZoomX 3, 1, 1
-    RotoZoomY 3, 1, 0
+    NegateBC
+    RotoZoomX 4, 1, 0
+    RotoZoomY 2, 1, 0
+    NegateDE
     exx
     
     dec iyl
     jp nz, -
+    
+    ; ld sp, (SPSave)
 
     ret
 
 UpdateMonoFB:
+    ld de, MonoFB
     ex de, hl
     ld ixl, 24
 -:
@@ -586,7 +576,7 @@ UpdateMonoFB:
             rr c
         .endr
         .repeat 4 index x_bit
-            ld e, (4 * x_byte + x_bit) * 2 + 1
+            ld e, (4 * x_byte + 4 - x_bit) * 2 - 1
             ld a, (de)
             and b
             cp b
@@ -621,12 +611,15 @@ VDPInitData:
 VDPInitDataEnd:
 
 LocalPalette:
-.db $00
-.db $aa
-.db $55
-.db $ff
-.repeat 28 index idx
-    .db (idx + 4) * 1.5
+.repeat 2
+    .db 27
+    .db 16
+    .db 47
+    .db 32
+    .repeat 11 index idx
+        .db idx * 3
+    .endr
+    .db 16
 .endr
 
 SpriteData:
