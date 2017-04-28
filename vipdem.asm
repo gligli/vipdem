@@ -366,24 +366,34 @@ p0:
 MainLoopStart:
 p1:
     ; anim slot
-    ld a, d
-    and $30
-    .repeat 3
-        rrca
-    .endr
-    or $04
+
+    ld a, $04
+    bit 5, d
+    jp z, +
+    ld a, $06
++:   
     ld (MapperSlot1), a
     inc a
     ld (MapperSlot2), a
 
     ; anim source pointer
+
     ld hl, AnimData
-    ld a, d
-    and $01
-    add a, h
+
+    ld a, h
+    bit 0, d
+    jp z, +
+    add a, $02
++:
     ld h, a
 
+    bit 4, d
+    jp z, +
+    inc l
++:   
+
     ; bit mask in b
+
     ld b, $80
     ld a, d
     and $0e
@@ -395,8 +405,8 @@ p1:
         jp nz, -
     +:
 
-    call RotoZoomMonoFB
-    ; call UpdateMonoFB
+    ; call RotoZoomMonoFB
+    call UpdateMonoFB
 p2:
     jp MainLoop
 
@@ -501,7 +511,7 @@ RotoZoomMonoFB:
     
     ld a, d
     ld de, 0
-    and 1
+    and 2
     jp z, RotoDoPrecalc
     
     exx
@@ -653,20 +663,24 @@ UpdateMonoFB:
             cp b
             rr c
         .endr
+        
+        inc d
         .repeat 4 index x_bit
-            ld e, (4 * x_byte + 4 - x_bit) * 2 - 1
+            ld e, (4 * x_byte + 3 - x_bit) * 2
             ld a, (de)
             and b
             cp b
             rr c
         .endr
+        dec d
 
         ld (hl), c
         inc hl
     .endr
 
-    inc d
-    inc d
+    .repeat 4
+        inc d
+    .endr
 
     dec ixl
     jp nz, -
