@@ -320,14 +320,6 @@ p0:
         out (VDPData), a
     .endr   
 
-    ; temporal de-dither using X scroll
-;     ld a, d
-;     and 1
-;     rlca
-;     out (VDPControl), a
-;     ld a, $88
-;     out (VDPControl), a
-
     ; RotoZoom control using D-Pad
     in a, (IOPortA)
     ld bc, $0004
@@ -446,20 +438,14 @@ CopyToVDP:
 .macro RotoZoomPushIncs args reset
     ; x coord
     ld a, ixh
-    ; sub h
     ld h, a
 
     ; y coord
     ld a, iyh
-    ; sub l
     ld l, a
 
     push hl
     
-    ; ld a, ixh
-    ; ld h, a
-    ; ld a, iyh
-    ; ld l, a
     .ifeq reset 1
         ld ixh, 0
         ld iyh, 0
@@ -475,38 +461,32 @@ CopyToVDP:
     ld d, (hl)
 .endm
 
-.macro RotoZoomAddIncs
-    ; x coord
+.macro RotoZoomGetPixel args address
+    ld hl, (address)
+   
+     ; x coord
     ld a, e
-    add a, (hl)
-    dec l
+    add a, h
     ld e, a 
 
     ; y coord
     ld a, d
-    add a, (hl)
-    dec l
+    add a, l
     ld d, a
-.endm
-
-.macro RotoZoomGetPixel
-    ; a from RotoZoomAddIncs
     
     ; y coord
     or $80 ; 128px wrap + slot 1 address
     rra ; extra y bit out
-    ld b, a
+    ld h, a
 
     ; x coord
-    ld c, e
-    rl c ; 128px wrap + extra y bit include
+    ld l, e
+    rl l ; 128px wrap + extra y bit include
 
-    ld a, (bc)
-    exx
+    ld a, (hl)
     and b
     cp b
     rr c
-    exx
 .endm
 
 RotoZoomMonoFB:
@@ -598,7 +578,12 @@ RotoPrecalcEnd:
     ; main loop on lines pairs
     
     ld hl, MonoFB
-    ld iy, 23 ; line counter
+    ld iy, 24 ; line counter
+    
+    ld a, b
+    exx
+    ld b, a
+    exx
 
 RotoLineLoop:
     exx
@@ -616,12 +601,12 @@ RotoLineLoop:
     
     .repeat 32 index x_byte
         exx
-        .repeat 4
-            RotoZoomAddIncs
-            RotoZoomGetPixel
+        .repeat 4 index x_bit
+            RotoZoomGetPixel RotoPrecalcDataEnd - 2 - 48 - x_bit * 2 - x_byte * 8
         .endr
+        ld a, c
         exx
-        ld (hl), c
+        ld (hl), a
         .ifneq x_byte 31
             inc hl
         .endif
@@ -634,14 +619,15 @@ RotoLineLoop:
     exx
     
     .repeat 32 index x_byte
-        ld c, (hl)
+        ld a, (hl)
         exx
-        .repeat 4
-            RotoZoomAddIncs
-            RotoZoomGetPixel
+        ld c, a
+        .repeat 4 index x_bit
+            RotoZoomGetPixel RotoPrecalcDataEnd - 2 - 48 - 256 - x_bit * 2 - x_byte * 8
         .endr
+        ld a, c
         exx
-        ld (hl), c
+        ld (hl), a
         .ifneq x_byte 31
             dec hl
         .endif
