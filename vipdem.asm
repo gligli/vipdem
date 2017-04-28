@@ -138,9 +138,10 @@ banks 8
 ;==============================================================
 
 .enum $c000 export
-    MonoFB            dsb 768
+    MonoFB            dsb 800
+    MonoFBEnd          . 
     RotoPrecalcData   dsb 560
-    RotoPrecalcDataEnd    .
+    RotoPrecalcDataEnd .
     SPSave            dw
     CurFrameIdx       dw
     RotoX             dw ; (8.8 fixed point)
@@ -313,10 +314,10 @@ p0:
 ++:
 
     xor a
-    ld hl, MonoFB
+    ld hl, MonoFBEnd - 1
     ld c, VDPData
     .repeat 768
-        outi
+        outd
         out (VDPData), a
     .endr   
 
@@ -397,8 +398,11 @@ p1:
         jp nz, -
     +:
 
+.ifeq 1 1
     call RotoZoomMonoFB
-    ; call UpdateMonoFB
+.else
+    call UpdateMonoFB
+.endif
 p2:
     jp MainLoop
 
@@ -565,14 +569,12 @@ RotoDoPrecalc:
         dec c
         jp nz, -
     
-    ld sp, (SPSave)
-
 ;    ret
 RotoPrecalcEnd:
     
     ; main loop on lines pairs
     
-    ld hl, MonoFB
+    ld sp, MonoFBEnd
     ld iy, 24 ; line counter
     
     ld a, b
@@ -591,21 +593,31 @@ RotoLineLoop:
     RotoZoomInitialIncs
     exx
 
-    .repeat 32 index x_byte
+    .repeat 16 index x_byte
         exx
         .repeat 8 index x_bit
-            RotoZoomGetPixel RotoPrecalcDataEnd - 2 * (1 + 24 + x_bit + x_byte * 8)
+            RotoZoomGetPixel RotoPrecalcDataEnd - 2 * (1 + 24 + x_bit + x_byte * 16)
         .endr
         ld a, c
         exx
-        ld (hl), a
-        inc hl
+        ld b, a
+        exx
+        .repeat 8 index x_bit
+            RotoZoomGetPixel RotoPrecalcDataEnd - 2 * (1 + 24 + 8 + x_bit + x_byte * 16)
+        .endr
+        ld a, c
+        exx
+        ld c, a
+        
+        push bc
     .endr
     
     dec iyh
     dec iyl
     jp nz, RotoLineLoop
     
+    ld sp, (SPSave)
+
     ret
 
 .macro MonoFBPixel args x_byte_, pos
@@ -617,7 +629,7 @@ RotoLineLoop:
 .endm
     
 UpdateMonoFB:
-    ld de, MonoFB
+    ld de, MonoFBEnd - 1
     ex de, hl
     ld ixl, 24
 -:
@@ -631,7 +643,7 @@ UpdateMonoFB:
         MonoFBPixel x_byte, 7
         MonoFBPixel x_byte, 6
         ld (hl), c
-        inc hl
+        dec hl
     .endr
 
     .repeat 2
