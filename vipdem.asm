@@ -106,6 +106,15 @@ banks 8
     ld d, a
 .endm
 
+.macro NegateHL
+    xor a
+    sub l
+    ld l,a
+    sbc a,a
+    sub h
+    ld h,a
+.endm
+
 .macro NegateDE
     xor a
     sub e
@@ -129,7 +138,9 @@ banks 8
 ;==============================================================
 
 .enum $c000 export
-    MonoFB            dsb 1024
+    MonoFB            dsb 768
+    RotoPrecalcData   dsb 576
+    RotoPrecalcDataEnd    .
     SPSave            dw
     CurFrameIdx       dw
     RotoX             dw ; (8.8 fixed point)
@@ -361,6 +372,7 @@ p0:
 +:
 
 MainLoopStart:
+p1:
     ; anim slot
     ld a, d
     and $30
@@ -409,15 +421,8 @@ CopyToVDP:
 
 
 
-.macro RotoZoomX args times, other, negate
+.macro RotoZoomX args times, other
     ; x offset
-    .ifeq negate 1
-        .ifeq other 1
-            NegateDE
-        .else
-            NegateBC
-        .endif
-    .endif
     .repeat times
         .ifeq other 1
             add ix, de
@@ -425,93 +430,200 @@ CopyToVDP:
             add ix, bc
         .endif
     .endr
-    .ifeq negate 1
-        .ifeq other 1
-            NegateDE
-        .else
-            NegateBC
-        .endif
-    .endif
 .endm
 
-.macro RotoZoomY args times, other, negate
+.macro RotoZoomY args times, other
     ; y offset
-    .ifeq negate 1
-        or a ; clear carry
-    .endif
     .repeat times
-        .ifeq negate 1
-            .ifeq other 1
-                sbc hl, bc
-            .else
-                sbc hl, de
-            .endif
+        .ifeq other 1
+            add iy, bc
         .else
-            .ifeq other 1
-                add hl, bc
-            .else
-                add hl, de
-            .endif
+            add iy, de
         .endif
     .endr
 .endm
 
-.macro RotoZoomPreGetPixel
+.macro RotoZoomPushIncs args reset
+    ; x coord
+    ld a, ixh
+    ; sub h
+    ld h, a
+
     ; y coord
-    ld a, h
+    ld a, iyh
+    ; sub l
+    ld l, a
+
+    push hl
+    
+    ; ld a, ixh
+    ; ld h, a
+    ; ld a, iyh
+    ; ld l, a
+    .ifeq reset 1
+        ld ixh, 0
+        ld iyh, 0
+    .endif
+.endm
+
+.macro RotoZoomInitialIncs
+    ; x coord
+    ld a, (hl)
+    dec hl
+    ld e, a 
+
+    ; y coord
+    ld a, (hl)
+    dec hl
+    ld d, a
+.endm
+
+.macro RotoZoomAddIncs
+    ; x coord
+    ld a, e
+    add a, (hl)
+    dec hl
+    ld e, a 
+
+    ; y coord
+    ld a, d
+    add a, (hl)
+    dec hl
+    ld d, a
+.endm
+
+.macro RotoZoomGetPixel
+    ; a from RotoZoomAddIncs
+    
+    ; y coord
     or $80 ; 128px wrap + slot 1 address
     rra ; extra y bit out
-.endm
-    
-.macro RotoZoomGetPixel
-    ld d, a
+    ld b, a
 
     ; x coord
-    ld e, ixh
-    rl e ; 128px wrap + extra y bit include
+    ld c, e
+    rl c ; 128px wrap + extra y bit include
 
-    ld a, (de)
+    ld a, (bc)
+    exx
     and b
     cp b
     rr c
+    exx
 .endm
 
 RotoZoomMonoFB:
-    ld de, MonoFB
     ex de, hl
-    ld iyl, 23
+
+    ; precaclulate increments for one line
 
     exx
+    ld hl, 0 ; PushIncs diff
     ld ix, 0 ; x
-    ld hl, 0 ; y
+    ld iy, 0 ; y
     ld bc, (RotoVX) ; vx
     ld de, (RotoVY) ; vy
     exx
-
+    
     ld a, d
+    ld de, 0
     and 1
-    jp z, +
+    jp z, RotoDoPrecalc
+    
     exx
-    RotoZoomX 2, 1, 1
-    RotoZoomY 2, 1, 0
+    NegateDE ; vy = - vy
+    RotoZoomX 2, 1
+    NegateDE ; vy = - vy
+    RotoZoomY 2, 1
     exx
+    
+    ;jp RotoPrecalcEnd ; no need to redo precalc
+    
+RotoDoPrecalc:
+    ld (SPSave), sp
+    ld sp, RotoPrecalcDataEnd
+
+    ld c, 24
+    exx
+    NegateDE ; vy = - vy
+-:    
+        RotoZoomX 4, 1
+        RotoZoomY 4, 1
+        RotoZoomPushIncs 0
+        exx
+        dec c
+        exx
+        jp nz, -
+
+    NegateDE ; vy = - vy
+
+    ld ix, 0 ; x
+    ld iy, 0 ; y
+
+    exx
+    ld c, 128
+    exx
+-:    
+        RotoZoomX 1, 0
+        RotoZoomY 1, 0
+        RotoZoomPushIncs 1
+        exx
+        dec c
+        exx
+        jp nz, -
+    
+    NegateDE ; vy = - vy
+    RotoZoomX 1, 1
+    RotoZoomY 1, 1
+    NegateBC ; vx = - vx
+    
+    exx
+    ld c, 128
+    exx
+    jp +
+-:    
+        RotoZoomX 1, 0
+        RotoZoomY 1, 0
 +:
+        RotoZoomPushIncs 1
+        exx
+        dec c
+        exx
+        jp nz, -
 
-    ; ld (SPSave), sp
-    ; ld sp, MonoFB + 1024
+    exx
 
--:
+    ld sp, (SPSave)
+
+;    ret
+RotoPrecalcEnd:
+    
+    ; main loop on lines pairs
+    
+    ld hl, MonoFB
+    ld iy, 24 ; line counter
+
+RotoLineLoop:
+    exx
+    ld hl, RotoPrecalcDataEnd - 1
+    ; advance hl "line" items
+    ld a, iyh
+    sla a
+    add a, l
+    ld l, a
+    RotoZoomInitialIncs
+    ld hl, RotoPrecalcDataEnd - 1 - 48
+    exx
+
     ; even line
     
     .repeat 32 index x_byte
-        .repeat 4 index x_bit
-            exx
-            RotoZoomX 1, 0, 0
-            RotoZoomY 1, 0, 0
-            RotoZoomPreGetPixel
-            exx
+        exx
+        .repeat 4
+            RotoZoomAddIncs
             RotoZoomGetPixel
         .endr
+        exx
         ld (hl), c
         .ifneq x_byte 31
             inc hl
@@ -520,25 +632,14 @@ RotoZoomMonoFB:
 
     ; odd line, reverse direction (zig-zag)
     
-    exx
-    NegateDE ; vy = - vy
-    RotoZoomX 1, 1, 0
-    RotoZoomY 1, 1, 0
-    NegateBC ; vx = - vx
-    exx
-    
     .repeat 32 index x_byte
         ld c, (hl)
-        .repeat 4 index x_bit
-            exx
-            .ifneq (4 * x_byte + x_bit) 0
-                RotoZoomX 1, 0, 0
-                RotoZoomY 1, 0, 0
-            .endif
-            RotoZoomPreGetPixel
-            exx
+        exx
+        .repeat 4
+            RotoZoomAddIncs
             RotoZoomGetPixel
         .endr
+        exx
         ld (hl), c
         .ifneq x_byte 31
             dec hl
@@ -548,22 +649,12 @@ RotoZoomMonoFB:
     ; advance to next line pair
     
     ld a, 32
-    AddAToHL;
+    AddAToHL
     
-    exx
-    RotoZoomX 1, 0, 0
-    RotoZoomY 1, 0, 0
-    NegateBC ; vx = - vx
-    RotoZoomX 3, 1, 0
-    RotoZoomY 3, 1, 0
-    NegateDE ; vy = - vy
-    exx
-    
+    dec iyh
     dec iyl
-    jp nz, -
+    jp nz, RotoLineLoop
     
-    ; ld sp, (SPSave)
-
     ret
 
 UpdateMonoFB:
