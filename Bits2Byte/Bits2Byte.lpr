@@ -26,14 +26,11 @@ type
 procedure TBits2Byte.DoRun;
 var
   InCnt, i, j: Integer;
-  MS: TMemoryStream;
   OutFS: TFileStream;
-  InFS: array[0..7] of TFileStream;
-  InByte: array[0..7] of Byte;
-  OutByte: Byte;
-  Interlace: Boolean;
+  InFS: array[0..15] of TFileStream;
+  InWord: array[0..15] of Word;
+  OutWord: Word;
 begin
-  MS := TMemoryStream.Create;
   OutFS := TFileStream.Create(ParamStr(1), fmCreate);
   InCnt := ParamCount - 1;
   for i := 0 to InCnt - 1 do
@@ -42,42 +39,24 @@ begin
   while InFS[0].Position < InFS[0].Size do
   begin
     for i := 0 to InCnt - 1 do
-      InByte[i] := InFS[i].ReadByte;
+      InWord[i] := InFS[i].ReadWord;
 
-    for j := 0 to 7 do
+    for j := 0 to High(InWord) do
     begin
-      OutByte := 0;
+      OutWord := 0;
 
       for i := 0 to InCnt - 1 do
       begin
-        OutByte := (OutByte shl 1) or (InByte[i] and 1);
-        InByte[i] := InByte[i] shr 1;
+        OutWord := (OutWord shl 1) or (InWord[i] and 1);
+        InWord[i] := InWord[i] shr 1;
       end;
 
-      MS.WriteByte(OutByte);
+      OutWord := SwapEndian(OutWord);
+
+      OutFS.WriteWord(OutWord);
     end;
   end;
 
-  Interlace := False;
-  MS.Seek(0, soBeginning);
-  for i := 0 to ms.Size - 1 do
-  begin
-    if (i <> 0) and (i and $ff = 0) then
-      MS.Seek(128, soCurrent);
-
-    OutByte := MS.ReadByte;
-
-    if Interlace then
-      MS.Seek(-128, soCurrent)
-    else
-      MS.Seek(127, soCurrent);
-
-    Interlace := not Interlace;
-
-    OutFS.WriteByte(OutByte);
-  end;
-
-  MS.Free;
   OutFS.Free;
   for i := 0 to InCnt - 1 do
     InFS[i].Free;

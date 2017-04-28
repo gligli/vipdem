@@ -368,11 +368,13 @@ p1:
     ; anim slot
     ld a, d
     and $30
-    .repeat 4
+    .repeat 3
         rrca
     .endr
     or $04
     ld (MapperSlot1), a
+    inc a
+    ld (MapperSlot2), a
 
     ; anim source pointer
     ld hl, AnimData
@@ -438,12 +440,12 @@ CopyToVDP:
 .macro RotoZoomPushIncs args reset
     ; x coord
     ld a, ixh
-;    rlca
+    sla a
     ld l, a
 
     ; y coord
     ld a, iyh
-;    rlca
+    rlca
     ld h, a
 
     push hl
@@ -474,14 +476,9 @@ CopyToVDP:
     ; y coord (128px wrapped)
     ld a, h
     add a, e
-    
-    ; y coord
-    or $80 ; 128px wrap + slot 1 address
-    rra ; extra y bit out
+    add a, $80 ; slot 1 + 2 address
+    rra
     ld h, a
-
-    ; x coord
-    rl l ; 128px wrap + extra y bit include
 
     ld a, (hl)
     and b
@@ -722,13 +719,13 @@ MonoFBData:
 .bank 4 slot 1
 .org $0000
 AnimData:
-.incbin "anim1.bin"
-.bank 5 slot 1
+.incbin "anim1.bin" read $4000
+.bank 5 slot 2
 .org $0000
-.incbin "anim2.bin"
+.incbin "anim1.bin" skip $4000 read $4000
 .bank 6 slot 1
 .org $0000
-.incbin "anim3.bin"
-.bank 7 slot 1
+.incbin "anim2.bin" read $4000
+.bank 7 slot 2
 .org $0000
-.incbin "anim4.bin"
+.incbin "anim2.bin" skip $4000 read $4000
