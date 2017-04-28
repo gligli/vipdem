@@ -469,11 +469,11 @@ CopyToVDP:
     ld a, h
     add a, d
     rrca
-    scf
+    scf ; slot 2 address ($8000)
     rra
     ld h, a
 
-     ; x coord (128px wrapped)
+    ; x coord (128px wrapped)
     ld a, l
     adc a, e ; add low y coord bit
     ld l, a 
