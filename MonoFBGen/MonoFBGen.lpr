@@ -28,6 +28,12 @@ const
 { TMonoFBGen }
 
 procedure TMonoFBGen.DoRun;
+const
+  cPixelsPositions: array[0..1, 0..3] of Byte =
+  (
+    (0, 3, 4, 7),
+    (1, 2, 5, 6)
+  );
 var
   tile, y, x, idx: Integer;
   tilesPlanes: array[0..cTileWidth - 1, 0..3] of Byte;
@@ -35,18 +41,9 @@ var
   fs: TFileStream;
 begin
   for tile := 0 to cTileCount - 1 do
-  begin
     for y := 0 to cTileWidth - 1 do
       for x := 0 to cTileWidth - 1 do
-      begin
-        case y of
-          0, 4: pixels[tile, cTileWidth * y + x] := (tile shr (x shr 1)) and 1;
-          1, 5: pixels[tile, cTileWidth * y + x] := ((tile shr (x shr 1)) and 1) + 2;
-          2, 6: pixels[tile, cTileWidth * y + x] := (tile shr (7 - (x shr 1))) and 1;
-          3, 7: pixels[tile, cTileWidth * y + x] := ((tile shr (7 - (x shr 1))) and 1) + 2;
-        end;
-      end;
-  end;
+        pixels[tile, cTileWidth * y + x] := ((tile shr cPixelsPositions[(y shr 1) and 1, x shr 1]) and 1) + ((y and 1) shl 1);
 
   fs := TFileStream.Create(ParamStr(1), fmCreate);
   try

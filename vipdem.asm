@@ -518,57 +518,53 @@ RotoDoPrecalc:
     ld c, 24
     exx
     NegateDE ; vy = - vy
+    exx
 -:    
+        exx
         RotoZoomX 4, 1
         RotoZoomY 4, 1
         RotoZoomPushIncs 1
         exx
+
         dec c
-        exx
         jp nz, -
 
+    exx
     NegateDE ; vy = - vy
+    exx
 
-    ; even line
+    ; zig-zagging through 2 consecutive lines
 
     ld ix, 0 ; x
     ld iy, 0 ; y
 
-    exx
-    ld c, 128
-    exx
+    ld c, 64
 -:    
+        exx
         RotoZoomX 1, 0
         RotoZoomY 1, 0
         RotoZoomPushIncs 0
-        exx
-        dec c
-        exx
-        jp nz, -
-    
-    ; odd line, reverse direction (zig-zag)
 
-    NegateDE ; vy = - vy
-    RotoZoomX 1, 1
-    RotoZoomY 1, 1
-    NegateBC ; vx = - vx
-    
-    exx
-    ld c, 128
-    exx
-    jp +
--:    
+        NegateDE ; vy = - vy
+        RotoZoomX 1, 1
+        NegateDE ; vy = - vy
+        RotoZoomY 1, 1
+        RotoZoomPushIncs 0
+
         RotoZoomX 1, 0
         RotoZoomY 1, 0
-+:
+        RotoZoomPushIncs 0
+
+        RotoZoomX 1, 1
+        NegateBC ; vx = - vx
+        RotoZoomY 1, 1
+        NegateBC ; vx = - vx
         RotoZoomPushIncs 0
         exx
+
         dec c
-        exx
         jp nz, -
-
-    exx
-
+    
     ld sp, (SPSave)
 
 ;    ret
@@ -577,7 +573,7 @@ RotoPrecalcEnd:
     ; main loop on lines pairs
     
     ld hl, MonoFB
-    ld iy, 23 ; line counter
+    ld iy, 24 ; line counter
     
     ld a, b
     exx
@@ -595,42 +591,16 @@ RotoLineLoop:
     RotoZoomInitialIncs
     exx
 
-    ; even line
-    
     .repeat 32 index x_byte
         exx
-        .repeat 4 index x_bit
-            RotoZoomGetPixel RotoPrecalcDataEnd - 2 - 48 - x_bit * 2 - x_byte * 8
+        .repeat 8 index x_bit
+            RotoZoomGetPixel RotoPrecalcDataEnd - 2 * (1 + 24 + x_bit + x_byte * 8)
         .endr
         ld a, c
         exx
         ld (hl), a
-        .ifneq x_byte 31
-            inc hl
-        .endif
+        inc hl
     .endr
-    
-    ; odd line
-    
-    .repeat 32 index x_byte
-        ld a, (hl)
-        exx
-        ld c, a
-        .repeat 4 index x_bit
-            RotoZoomGetPixel RotoPrecalcDataEnd - 2 - 48 - 256 - x_bit * 2 - x_byte * 8
-        .endr
-        ld a, c
-        exx
-        ld (hl), a
-        .ifneq x_byte 31
-            dec hl
-        .endif
-    .endr
-    
-    ; advance to next line pair
-    
-    ld a, 32
-    AddAToHL
     
     dec iyh
     dec iyl
@@ -638,28 +608,28 @@ RotoLineLoop:
     
     ret
 
+.macro MonoFBPixel args x_byte_, pos
+    ld e, 8 * x_byte_ + pos
+    ld a, (de)
+    and b
+    cp b
+    rr c
+.endm
+    
 UpdateMonoFB:
     ld de, MonoFB
     ex de, hl
     ld ixl, 24
 -:
     .repeat 32 index x_byte
-        .repeat 4 index x_bit
-            ld e, (4 * x_byte + x_bit) * 2
-            ld a, (de)
-            and b
-            cp b
-            rr c
-        .endr
-        
-        .repeat 4 index x_bit
-            ld e, (4 * x_byte + 4 - x_bit) * 2 - 1
-            ld a, (de)
-            and b
-            cp b
-            rr c
-        .endr
-
+        MonoFBPixel x_byte, 0
+        MonoFBPixel x_byte, 1
+        MonoFBPixel x_byte, 3
+        MonoFBPixel x_byte, 2
+        MonoFBPixel x_byte, 4
+        MonoFBPixel x_byte, 5
+        MonoFBPixel x_byte, 7
+        MonoFBPixel x_byte, 6
         ld (hl), c
         inc hl
     .endr

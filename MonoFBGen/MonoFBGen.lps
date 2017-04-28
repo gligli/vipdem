@@ -9,13 +9,13 @@
         <Filename Value="MonoFBGen.lpr"/>
         <IsPartOfProject Value="True"/>
         <IsVisibleTab Value="True"/>
-        <TopLine Value="22"/>
-        <CursorPos X="68" Y="46"/>
-        <UsageCount Value="21"/>
+        <TopLine Value="16"/>
+        <CursorPos X="44" Y="46"/>
+        <UsageCount Value="23"/>
         <Loaded Value="True"/>
       </Unit0>
     </Units>
-    <JumpHistory Count="7" HistoryIndex="6">
+    <JumpHistory Count="8" HistoryIndex="7">
       <Position1>
         <Filename Value="MonoFBGen.lpr"/>
         <Caret Line="42" Column="15"/>
@@ -44,6 +44,10 @@
         <Filename Value="MonoFBGen.lpr"/>
         <Caret Line="43" Column="47" TopLine="14"/>
       </Position7>
+      <Position8>
+        <Filename Value="MonoFBGen.lpr"/>
+        <Caret Line="49" TopLine="16"/>
+      </Position8>
     </JumpHistory>
   </ProjectSession>
 </CONFIG>
