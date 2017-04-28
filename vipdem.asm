@@ -367,30 +367,22 @@ MainLoopStart:
 p1:
     ; anim slot
 
-    ld a, $04
-    bit 5, d
-    jp z, +
-    ld a, $06
-+:   
-    ld (MapperSlot1), a
-    inc a
+    ld a, d
+    and $30
+    .repeat 4
+        rrca
+    .endr
+    or $04
+
     ld (MapperSlot2), a
 
     ; anim source pointer
 
     ld hl, AnimData
-
-    ld a, h
     bit 0, d
     jp z, +
-    add a, $02
+    inc h
 +:
-    ld h, a
-
-    bit 4, d
-    jp z, +
-    inc l
-+:   
 
     ; bit mask in b
 
@@ -405,8 +397,8 @@ p1:
         jp nz, -
     +:
 
-    ; call RotoZoomMonoFB
-    call UpdateMonoFB
+    call RotoZoomMonoFB
+    ; call UpdateMonoFB
 p2:
     jp MainLoop
 
@@ -447,7 +439,7 @@ CopyToVDP:
     .endr
 .endm
 
-.macro RotoZoomPushIncs args reset
+.macro RotoZoomPushIncs
     ; x coord
     ld a, ixh
     sla a
@@ -455,40 +447,36 @@ CopyToVDP:
 
     ; y coord
     ld a, iyh
-    rlca
+    sla a
     ld h, a
 
     push hl
-    
-    .ifeq reset 1
-        ld ixh, 0
-        ld iyh, 0
-    .endif
 .endm
 
 .macro RotoZoomInitialIncs
-    ; x coord
-    ld e, (hl)
-    dec l
-
     ; y coord
     ld d, (hl)
+    dec l
+
+    ; x coord
+    ld e, (hl)
 .endm
 
 .macro RotoZoomGetPixel args address
     ld hl, (address)
    
-     ; x coord (128px wrapped)
-    ld a, l
-    add a, d
-    ld l, a 
-
     ; y coord (128px wrapped)
     ld a, h
-    add a, e
-    add a, $80 ; slot 1 + 2 address
+    add a, d
+    rrca
+    scf
     rra
     ld h, a
+
+     ; x coord (128px wrapped)
+    ld a, l
+    adc a, e ; add low y coord bit
+    ld l, a 
 
     ld a, (hl)
     and b
@@ -511,7 +499,7 @@ RotoZoomMonoFB:
     
     ld a, d
     ld de, 0
-    and 2
+    and 1
     jp z, RotoDoPrecalc
     
     exx
@@ -533,7 +521,7 @@ RotoDoPrecalc:
 -:    
         RotoZoomX 4, 1
         RotoZoomY 4, 1
-        RotoZoomPushIncs 0
+        RotoZoomPushIncs 1
         exx
         dec c
         exx
@@ -589,7 +577,7 @@ RotoPrecalcEnd:
     ; main loop on lines pairs
     
     ld hl, MonoFB
-    ld iy, 24 ; line counter
+    ld iy, 23 ; line counter
     
     ld a, b
     exx
@@ -664,21 +652,19 @@ UpdateMonoFB:
             rr c
         .endr
         
-        inc d
         .repeat 4 index x_bit
-            ld e, (4 * x_byte + 3 - x_bit) * 2
+            ld e, (4 * x_byte + 4 - x_bit) * 2 - 1
             ld a, (de)
             and b
             cp b
             rr c
         .endr
-        dec d
 
         ld (hl), c
         inc hl
     .endr
 
-    .repeat 4
+    .repeat 2
         inc d
     .endr
 
@@ -730,16 +716,16 @@ MonoFBData:
 .incbin "MonoFB.bin" fsize MonoFBSize
 
 .incdir "anim_128_1/"
-.bank 4 slot 1
+.bank 4 slot 2
 .org $0000
 AnimData:
-.incbin "anim1.bin" read $4000
+.incbin "anim1.bin"
 .bank 5 slot 2
 .org $0000
-.incbin "anim1.bin" skip $4000 read $4000
-.bank 6 slot 1
+.incbin "anim2.bin"
+.bank 6 slot 2
 .org $0000
-.incbin "anim2.bin" read $4000
+.incbin "anim3.bin"
 .bank 7 slot 2
 .org $0000
-.incbin "anim2.bin" skip $4000 read $4000
+.incbin "anim4.bin"
