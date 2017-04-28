@@ -438,11 +438,13 @@ CopyToVDP:
 .macro RotoZoomPushIncs args reset
     ; x coord
     ld a, ixh
-    ld h, a
+;    rlca
+    ld l, a
 
     ; y coord
     ld a, iyh
-    ld l, a
+;    rlca
+    ld h, a
 
     push hl
     
@@ -464,15 +466,14 @@ CopyToVDP:
 .macro RotoZoomGetPixel args address
     ld hl, (address)
    
-     ; x coord
-    ld a, e
-    add a, h
-    ld e, a 
+     ; x coord (128px wrapped)
+    ld a, l
+    add a, d
+    ld l, a 
 
-    ; y coord
-    ld a, d
-    add a, l
-    ld d, a
+    ; y coord (128px wrapped)
+    ld a, h
+    add a, e
     
     ; y coord
     or $80 ; 128px wrap + slot 1 address
@@ -480,7 +481,6 @@ CopyToVDP:
     ld h, a
 
     ; x coord
-    ld l, e
     rl l ; 128px wrap + extra y bit include
 
     ld a, (hl)
@@ -534,6 +534,8 @@ RotoDoPrecalc:
 
     NegateDE ; vy = - vy
 
+    ; even line
+
     ld ix, 0 ; x
     ld iy, 0 ; y
 
@@ -543,12 +545,14 @@ RotoDoPrecalc:
 -:    
         RotoZoomX 1, 0
         RotoZoomY 1, 0
-        RotoZoomPushIncs 1
+        RotoZoomPushIncs 0
         exx
         dec c
         exx
         jp nz, -
     
+    ; odd line, reverse direction (zig-zag)
+
     NegateDE ; vy = - vy
     RotoZoomX 1, 1
     RotoZoomY 1, 1
@@ -562,7 +566,7 @@ RotoDoPrecalc:
         RotoZoomX 1, 0
         RotoZoomY 1, 0
 +:
-        RotoZoomPushIncs 1
+        RotoZoomPushIncs 0
         exx
         dec c
         exx
@@ -594,7 +598,6 @@ RotoLineLoop:
     add a, l
     ld l, a
     RotoZoomInitialIncs
-    ld hl, RotoPrecalcDataEnd - 1 - 48
     exx
 
     ; even line
@@ -612,11 +615,7 @@ RotoLineLoop:
         .endif
     .endr
     
-    ; odd line, reverse direction (zig-zag)
-    
-    exx
-    dec h
-    exx
+    ; odd line
     
     .repeat 32 index x_byte
         ld a, (hl)
