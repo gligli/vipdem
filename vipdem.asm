@@ -139,7 +139,7 @@ banks 8
 
 .enum $c000 export
     MonoFB            dsb 768
-    RotoPrecalcData   dsb 576
+    RotoPrecalcData   dsb 560
     RotoPrecalcDataEnd    .
     SPSave            dw
     CurFrameIdx       dw
@@ -468,27 +468,24 @@ CopyToVDP:
 
 .macro RotoZoomInitialIncs
     ; x coord
-    ld a, (hl)
-    dec hl
-    ld e, a 
+    ld e, (hl)
+    dec l
 
     ; y coord
-    ld a, (hl)
-    dec hl
-    ld d, a
+    ld d, (hl)
 .endm
 
 .macro RotoZoomAddIncs
     ; x coord
     ld a, e
     add a, (hl)
-    dec hl
+    dec l
     ld e, a 
 
     ; y coord
     ld a, d
     add a, (hl)
-    dec hl
+    dec l
     ld d, a
 .endm
 
@@ -601,7 +598,7 @@ RotoPrecalcEnd:
     ; main loop on lines pairs
     
     ld hl, MonoFB
-    ld iy, 24 ; line counter
+    ld iy, 23 ; line counter
 
 RotoLineLoop:
     exx
@@ -629,8 +626,12 @@ RotoLineLoop:
             inc hl
         .endif
     .endr
-
+    
     ; odd line, reverse direction (zig-zag)
+    
+    exx
+    dec h
+    exx
     
     .repeat 32 index x_byte
         ld c, (hl)
