@@ -300,8 +300,6 @@ main:
     in a, (VDPControl) ; ack any previous int
     ei
     
-    jp MainLoopStart
-
 ;==============================================================
 ; Main loop
 ;==============================================================
@@ -382,7 +380,6 @@ p0:
         ld (RotoVX), hl
 +:
 
-MainLoopStart:
 p1:
     ; anim slot
 
@@ -486,15 +483,6 @@ p2:
     ld a, ixh
     sla a
     ld (hl), a
-.endm
-
-.macro RotoZoomInitialIncs
-    ; y coord
-    ld d, (hl)
-    dec l
-
-    ; x coord
-    ld e, (hl)
 .endm
 
 .macro RotoZoomGetPixel args idx
@@ -694,10 +682,13 @@ RotoLineLoop:
     exx
     ld hl, RotoPrecalcDataEnd - 1
     ; advance hl "line" items
-    sla a
     add a, l
     ld l, a
-    RotoZoomInitialIncs
+    ; y coord
+    ld d, (hl)
+    dec l
+    ; x coord
+    ld e, (hl)
     
     jp RAMCode
 RotoRAMCodeStart:    
@@ -719,6 +710,7 @@ RotoRAMCodeRet:
     
     exx
 
+    dec h
     dec h
     dec l
     jp nz, RotoLineLoop
