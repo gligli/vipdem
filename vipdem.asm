@@ -154,16 +154,18 @@ banks 8
 ;==============================================================
 
 .enum $c000 export
+    RotoRAMBakeIncs   dsb 512  
+    RotoRAMBakeIncsEnd .
     MonoFB            dsb 800
     MonoFBEnd          . 
     RotoPrecalcData   dsb 48
     RotoPrecalcDataEnd .
-    RotoRAMBakeIncs   dsb 512  
 
     SPSave            dw
     CurFrameIdx       dw
     RotoVX            dw ; (8.8 fixed point)
     RotoVY            dw ; (8.8 fixed point)
+    RotoAnimMaskSave  db
     DoAnim            db
         
     ; keep this last    
@@ -481,24 +483,26 @@ p2:
 
 .macro RotoZoomBakeIncs
     exx
-
-    ld a, (hl)
-    inc hl
-    AddAToDE
+    
+    ld a, (de)
+    inc e
+    ld c, a
+    add hl, bc
 
     ; y coord
     ld a, iyh
-    sla a
-    ld (de), a
+    add a, a
+    ld (hl), a
     
-    ld a, (hl)
-    inc hl
-    AddAToDE
+    ld a, (de)
+    inc e
+    ld c, a
+    add hl, bc
     
     ; x coord
     ld a, ixh
-    sla a
-    ld (de), a
+    add a, a
+    ld (hl), a
 
     exx
 .endm
@@ -601,6 +605,9 @@ RotoZoomInit:
 RotoZoomMonoFB:
     ex de, hl
 
+    ld a, b
+    ld (RotoAnimMaskSave), a
+    
     ; precaclulate increments for one line
 
     exx
@@ -650,44 +657,48 @@ RotoDoPrecalc:
 
     ; zig-zagging through 2 consecutive lines (pattern: ¨¨|_| )
 
-    ld hl, RotoRAMBakeIncs
-    ld de, RAMCode
+    ld de, RotoRAMBakeIncs
+    ld hl, RAMCode
     
     ld ix, 0 ; x
     ld iy, 0 ; y
 
-    ld c, 64
+    ld b, 0
 -:    
     exx
-    RotoZoomX 1, 0
-    RotoZoomY 1, 0
-    RotoZoomBakeIncs
+    .repeat 32
+        RotoZoomX 1, 0
+        RotoZoomY 1, 0
+        RotoZoomBakeIncs
 
-    ex de, hl ; vy = - vy
-    RotoZoomX 1, 1
-    ex de, hl ; vy = - vy
-    RotoZoomY 1, 1
-    RotoZoomBakeIncs
+        ex de, hl ; vy = - vy
+        RotoZoomX 1, 1
+        ex de, hl ; vy = - vy
+        RotoZoomY 1, 1
+        RotoZoomBakeIncs
 
-    RotoZoomX 1, 0
-    RotoZoomY 1, 0
-    RotoZoomBakeIncs
+        RotoZoomX 1, 0
+        RotoZoomY 1, 0
+        RotoZoomBakeIncs
 
-    RotoZoomX 1, 1
-    NegateBC ; vx = - vx
-    RotoZoomY 1, 1
-    NegateBC ; vx = - vx
-    RotoZoomBakeIncs
+        RotoZoomX 1, 1
+        NegateBC ; vx = - vx
+        RotoZoomY 1, 1
+        ld bc, (RotoVX) ; vx
+        RotoZoomBakeIncs
+    .endr
     exx
-
-    dec c
+    
+    inc d
+    ld a, d
+    cp >RotoRAMBakeIncsEnd
     jp nz, -
     
 ;    ret
 RotoPrecalcEnd:
 
-    ld a, b
     exx
+    ld a, (RotoAnimMaskSave)
     ld b, a
     exx
 
