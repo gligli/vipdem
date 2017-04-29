@@ -191,21 +191,35 @@ init_tab: ; table must exist within first 1K of ROM
 
 .org $0038
     ex af, af'
-    in a, (VDPControl)
+    in a, (VDPControl) ;ack vdp int
+    
+    jr nc, +
 
-    in a, (VDPScanline)
-
-    and $04
-    or $fb
-
+    ; change tilemap ($3000)
+    ld a, $fd
     out (VDPControl), a
     ld a, $82
     out (VDPControl), a
 
+    or a ; clear carry
+    
     ex af, af'
     ei
     ret
 
++:    
+    ; change tilemap ($3800)
+    ld a, $ff
+    out (VDPControl), a
+    ld a, $82
+    out (VDPControl), a
+
+    scf
+    
+    ex af, af'
+    ei
+    ret
+    
 .org $0066
     rst 0
 
@@ -279,6 +293,16 @@ main:
         inc iy
     .endr
 
+    ; init line int
+    in a, (VDPControl) ; ack any previous int
+    ex af, af'
+    scf
+    ex af, af'
+    ld a, 3 ; every 4 lines
+    out (VDPControl), a
+    ld a, $8a
+    out (VDPControl), a
+
     ; turn screen on
     ld a, %1000010
 ;          ||||||`- Zoomed sprites -> 16x16 pixels
@@ -291,8 +315,7 @@ main:
     out (VDPControl), a
     ld a, $81
     out (VDPControl), a
-
-    in a, (VDPControl) ; ack any previous int
+    
     ei
     
 ;==============================================================
@@ -321,7 +344,7 @@ p0:
     SetVDPAddress $3800 | VRAMWrite
     jp ++
 +:
-    SetVDPAddress $2800 | VRAMWrite
+    SetVDPAddress $3000 | VRAMWrite
 ++:
 
     xor a
@@ -766,7 +789,7 @@ PSGInitDataEnd:
 
 ; VDP initialisation data
 VDPInitData:
-.db $14,$80,$00,$81,$ff,$82,$41,$85,$fb,$86,$ff,$87,$00,$88,$00,$89,$03,$8a
+.db $14,$80,$00,$81,$ff,$82,$41,$85,$fb,$86,$ff,$87,$00,$88,$00,$89,$ff,$8a
 VDPInitDataEnd:
 
 LocalPalette:
