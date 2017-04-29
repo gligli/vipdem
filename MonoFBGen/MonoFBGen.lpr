@@ -43,7 +43,7 @@ begin
   for tile := 0 to cTileCount - 1 do
     for y := 0 to cTileWidth - 1 do
       for x := 0 to cTileWidth - 1 do
-        pixels[tile, cTileWidth * y + x] := ((tile shr cPixelsPositions[(y shr 1) and 1, x shr 1]) and 1) + (y shl 1);
+        pixels[tile, cTileWidth * y + x] := ((tile shr cPixelsPositions[(y shr 1) and 1, 3 - (x shr 1)]) and 1) + (y shl 1);
 
   fs := TFileStream.Create(ParamStr(1), fmCreate);
   try

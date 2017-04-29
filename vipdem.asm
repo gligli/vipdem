@@ -11,9 +11,9 @@ slot 2 $8000
 .endme
 
 .rombankmap
-bankstotal 8
+bankstotal 4
 banksize $4000
-banks 8
+banks 4
 .endro
 
 ;==============================================================
@@ -154,7 +154,7 @@ banks 8
 ;==============================================================
 
 .enum $c000 export
-    RotoRAMBakeIncs   dsb 512  
+    RotoRAMBakeIncs   dsb 256  
     RotoRAMBakeIncsEnd .
     MonoFB            dsb 800
     MonoFBEnd          . 
@@ -165,7 +165,6 @@ banks 8
     CurFrameIdx       dw
     RotoVX            dw ; (8.8 fixed point)
     RotoVY            dw ; (8.8 fixed point)
-    RotoAnimMaskSave  db
     DoAnim            db
         
     ; keep this last    
@@ -334,13 +333,8 @@ p0:
     ld a, (CurFrameIdx)
     inc a
     ld (CurFrameIdx), a
+    ld d, a
 
-    ; animation index
-    ld d, a
-    ld a, (DoAnim)
-    and d
-    ld d, a
-    
     and 1
     jp z, +
     SetVDPAddress $3800 | VRAMWrite
@@ -402,36 +396,15 @@ p0:
 
 p1:
     ; anim slot
-
-    ld a, d
-    and $30
-    .repeat 4
-        rrca
-    .endr
-    or $04
-
-    ld (MapperSlot2), a
-
+    ld a, 2
+    ld (MapperSlot1), a    
+    
     ; anim source pointer
-
-    ld hl, AnimData
+    ld hl, FixedData
     bit 0, d
     jp z, +
     inc h
 +:
-
-    ; bit mask in b
-
-    ld b, $80
-    ld a, d
-    and $0e
-    rrca
-    jp z, +
-    -:
-        srl b
-        dec a
-        jp nz, -
-    +:
 
 .ifeq 1 1
     call RotoZoomMonoFB
@@ -470,12 +443,10 @@ p2:
 .macro RotoZoomPushIncs
     ; x coord
     ld a, ixh
-    sla a
     ld l, a
 
     ; y coord
     ld a, iyh
-    sla a
     ld h, a
 
     push hl
@@ -489,66 +460,48 @@ p2:
     ld c, a
     add hl, bc
 
-    ; y coord
-    ld a, iyh
-    add a, a
-    ld (hl), a
-    
-    ld a, (de)
-    inc e
-    ld c, a
-    add hl, bc
-    
     ; x coord
     ld a, ixh
-    add a, a
+    ld (hl), a
+
+    inc hl
+    
+    ; y coord
+    ld a, iyh
     ld (hl), a
 
     exx
 .endm
 
 .macro RotoZoomGetPixel args idx
-
 .ifeq idx 0
-RotoRAMCodeBakePosY0:
+RotoRAMCodeBakePos0:
 .endif
 .ifeq idx 1
-RotoRAMCodeBakePosY1:
-.endif
-.ifeq idx 8
-RotoRAMCodeBakePosY8:
-.endif
-.ifeq idx 16
-RotoRAMCodeBakePosY16:
-.endif
-
-    ; y coord (128px wrapped)
-    ld a, $55 ; placeholder value
-    add a, d
-    rrca
-    scf ; slot 2 address ($8000)
-    rra
-    ld h, a
-
-.ifeq idx 0
-RotoRAMCodeBakePosX0:
+RotoRAMCodeBakePos1:
 .endif
 .ifeq idx 7
-RotoRAMCodeBakePosX7:
+RotoRAMCodeBakePos7:
+.endif
+.ifeq idx 8
+RotoRAMCodeBakePos8:
 .endif
 .ifeq idx 15
-RotoRAMCodeBakePosX15:
+RotoRAMCodeBakePos15:
 .endif
+.ifeq idx 16
+RotoRAMCodeBakePos16:
+.endif
+    ld hl, $aa55 ; placeholder value (x/y coordinates will be copied in)
+   
+    add hl, de ; add line x/y offset
+    
+    srl h ; push low y bit out
+    rl l ; push low y bit in + x 128 px wrap
+    set 6, h ; slot 1 address + y 128px wrap
 
-    ; x coord (128px wrapped)
-    ld a, $55 ; placeholder value
-    adc a, e ; add low y coord bit
-    ld l, a 
-
-    ld a, (hl)
-    and b
-    cp b
-    rr c
+    rlca
+    or (hl)
 .endm
 
 RotoZoomInit:
@@ -571,14 +524,9 @@ RotoZoomInit:
 
     ; get offset increments in RAM code where data will be copied in
     ld hl, RotoRAMBakeIncs
-    ld d, RotoRAMCodeBakePosY0 - RotoRAMCodeStart + 1
+    ld d, RotoRAMCodeBakePos0 - RotoRAMCodeStart + 1
     ld e, 0
 -:    
-    ld (hl), d
-    inc hl
-    
-    ld d, RotoRAMCodeBakePosX0 - RotoRAMCodeBakePosY0
-
     ld (hl), d
     inc hl
         
@@ -586,15 +534,15 @@ RotoZoomInit:
     and $0f
     cp 7
     jp nz, +
-    ld d, RotoRAMCodeBakePosY8 - RotoRAMCodeBakePosX7
+    ld d, RotoRAMCodeBakePos8 - RotoRAMCodeBakePos7 - 1
     jp ++
 +:
     cp 15
     jp nz, +
-    ld d, RotoRAMCodeBakePosY16 - RotoRAMCodeBakePosX15
+    ld d, RotoRAMCodeBakePos16 - RotoRAMCodeBakePos15 - 1
     jp ++
 +:
-    ld d, RotoRAMCodeBakePosY1 - RotoRAMCodeBakePosX0
+    ld d, RotoRAMCodeBakePos1 - RotoRAMCodeBakePos0 - 1
 ++:
     
     inc e
@@ -605,9 +553,6 @@ RotoZoomInit:
 RotoZoomMonoFB:
     ex de, hl
 
-    ld a, b
-    ld (RotoAnimMaskSave), a
-    
     ; precaclulate increments for one line
 
     exx
@@ -689,18 +634,12 @@ RotoDoPrecalc:
     .endr
     exx
     
-    inc d
-    ld a, d
-    cp >RotoRAMBakeIncsEnd
+    xor a
+    cp e
     jp nz, -
     
 ;    ret
 RotoPrecalcEnd:
-
-    exx
-    ld a, (RotoAnimMaskSave)
-    ld b, a
-    exx
 
     ld sp, MonoFBEnd
     ld hl, 23 ; line counter
@@ -723,16 +662,18 @@ RotoLineLoop:
     jp RAMCode
 RotoRAMCodeStart:    
     .repeat 2 index x_dummy
+        xor a
         .repeat 8 index x_bit
             RotoZoomGetPixel x_dummy * 16 + x_bit
         .endr
-        ld iyh, c
+        ld b, a
+        xor a
         .repeat 8 index x_bit
             RotoZoomGetPixel x_dummy * 16 + x_bit + 8
         .endr
-        ld iyl, c
+        ld c, a
         
-        push iy
+        push bc
     .endr
 RotoRAMCodeEnd:
     jp RotoRAMCodeRet
@@ -754,19 +695,17 @@ RotoRAMCodeRet:
 ;==============================================================
 
 .macro MonoFBPixel args x_byte_, pos
-    ld e, 8 * x_byte_ + pos
-    ld a, (de)
-    and b
-    cp b
-    rr c
+    ld l, 8 * x_byte_ + pos
+    rlca
+    or (hl)
 .endm
     
 UpdateMonoFB:
     ld de, MonoFBEnd - 1
-    ex de, hl
-    ld ixl, 24
+    ld b, 24
 -:
     .repeat 32 index x_byte
+        xor a
         MonoFBPixel x_byte, 0
         MonoFBPixel x_byte, 1
         MonoFBPixel x_byte, 3
@@ -775,15 +714,15 @@ UpdateMonoFB:
         MonoFBPixel x_byte, 5
         MonoFBPixel x_byte, 7
         MonoFBPixel x_byte, 6
-        ld (hl), c
-        dec hl
+        ld (de), a
+        dec de
     .endr
 
     .repeat 2
-        inc d
+        inc h
     .endr
 
-    dec ixl
+    dec b
     jp nz, -
 
     ret
@@ -805,14 +744,14 @@ VDPInitDataEnd:
 
 LocalPalette:
 .repeat 2
+    .db 16
+    .db 16
+    .db 32
     .db 47
+    .db 16
+    .db 16
     .db 32
-    .db 16
-    .db 16
     .db 63
-    .db 32
-    .db 16
-    .db 16
 .endr
 .repeat 16
     .db 16
@@ -834,16 +773,7 @@ MonoFBData:
 .incbin "MonoFB.bin" fsize MonoFBSize
 
 .incdir "anim_128_1/"
-.bank 4 slot 2
+.bank 2 slot 1
 .org $0000
-AnimData:
-.incbin "anim1.bin"
-.bank 5 slot 2
-.org $0000
-.incbin "anim2.bin"
-.bank 6 slot 2
-.org $0000
-.incbin "anim3.bin"
-.bank 7 slot 2
-.org $0000
-.incbin "anim4.bin"
+FixedData:
+.incbin "fixed.bin"
