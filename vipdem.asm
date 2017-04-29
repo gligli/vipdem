@@ -463,26 +463,26 @@ p2:
 
 .macro RotoZoomBakeIncs
     exx
+
     ld a, (hl)
     inc hl
-    exx
-    AddAToHL
+    AddAToDE
 
     ; y coord
     ld a, iyh
     sla a
-    ld (hl), a
+    ld (de), a
     
-    exx
     ld a, (hl)
     inc hl
-    exx
-    AddAToHL
+    AddAToDE
     
     ; x coord
     ld a, ixh
     sla a
-    ld (hl), a
+    ld (de), a
+
+    exx
 .endm
 
 .macro RotoZoomGetPixel args idx
@@ -586,11 +586,12 @@ RotoZoomMonoFB:
     ; precaclulate increments for one line
 
     exx
-    ld hl, 0 ; PushIncs diff
     ld ix, 0 ; x
     ld iy, 0 ; y
     ld bc, (RotoVX) ; vx
     ld de, (RotoVY) ; vy
+    ld hl, (RotoVY) ; -vy
+    NegateHL
     exx
     
     ld a, d
@@ -599,9 +600,9 @@ RotoZoomMonoFB:
     jp z, RotoDoPrecalc
     
     exx
-    NegateDE ; vy = - vy
+    ex de, hl ; vy = - vy
     RotoZoomX 2, 1
-    NegateDE ; vy = - vy
+    ex de, hl ; vy = - vy
     RotoZoomY 2, 1
     exx
     
@@ -611,7 +612,7 @@ RotoDoPrecalc:
 
     ld c, 24
     exx
-    NegateDE ; vy = - vy
+    ex de, hl ; vy = - vy
     exx
 -:    
     exx
@@ -624,15 +625,15 @@ RotoDoPrecalc:
     jp nz, -
 
     exx
-    NegateDE ; vy = - vy
+    ; hl thrashed by RotoZoomPushIncs
+    ld hl, (RotoVY) ; vy
+    ex de, hl ; vy = - vy
     exx
 
     ; zig-zagging through 2 consecutive lines (pattern: ¨¨|_| )
 
     ld hl, RotoRAMBakeIncs
-    exx
-    ld hl, RAMCode
-    exx
+    ld de, RAMCode
     
     ld ix, 0 ; x
     ld iy, 0 ; y
@@ -644,9 +645,9 @@ RotoDoPrecalc:
     RotoZoomY 1, 0
     RotoZoomBakeIncs
 
-    NegateDE ; vy = - vy
+    ex de, hl ; vy = - vy
     RotoZoomX 1, 1
-    NegateDE ; vy = - vy
+    ex de, hl ; vy = - vy
     RotoZoomY 1, 1
     RotoZoomBakeIncs
 
