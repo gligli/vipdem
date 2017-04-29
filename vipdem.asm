@@ -198,11 +198,6 @@ init_tab: ; table must exist within first 1K of ROM
     and $04
     or $fb
 
-    .repeat 5
-        inc iy
-        dec iy
-    .endr
-
     out (VDPControl), a
     ld a, $82
     out (VDPControl), a
@@ -212,7 +207,7 @@ init_tab: ; table must exist within first 1K of ROM
     ret
 
 .org $0066
-    jp 0
+    rst 0
 
 main:
     ; set up stack
@@ -674,7 +669,7 @@ RotoPrecalcEnd:
     exx
 
     ld sp, MonoFBEnd
-    ld hl, 24 ; line counter
+    ld hl, 23 ; line counter
     
     ; main loop on lines pairs
     
@@ -776,13 +771,16 @@ VDPInitDataEnd:
 
 LocalPalette:
 .repeat 2
-    .db 27
-    .db 16
     .db 47
     .db 32
-    .repeat 11 index idx
-        .db idx * 3
-    .endr
+    .db 16
+    .db 16
+    .db 63
+    .db 32
+    .db 16
+    .db 16
+.endr
+.repeat 16
     .db 16
 .endr
 
