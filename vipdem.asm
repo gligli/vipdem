@@ -488,16 +488,16 @@ p2:
 .macro RotoZoomGetPixel args idx
 
 .ifeq idx 0
-RotoRAMCodeBakePosA0:
+RotoRAMCodeBakePosY0:
 .endif
 .ifeq idx 1
-RotoRAMCodeBakePosA1:
+RotoRAMCodeBakePosY1:
 .endif
 .ifeq idx 8
-RotoRAMCodeBakePosA8:
+RotoRAMCodeBakePosY8:
 .endif
 .ifeq idx 16
-RotoRAMCodeBakePosA16:
+RotoRAMCodeBakePosY16:
 .endif
 
     ; y coord (128px wrapped)
@@ -509,13 +509,13 @@ RotoRAMCodeBakePosA16:
     ld h, a
 
 .ifeq idx 0
-RotoRAMCodeBakePosB0:
+RotoRAMCodeBakePosX0:
 .endif
 .ifeq idx 7
-RotoRAMCodeBakePosB7:
+RotoRAMCodeBakePosX7:
 .endif
 .ifeq idx 15
-RotoRAMCodeBakePosB15:
+RotoRAMCodeBakePosX15:
 .endif
 
     ; x coord (128px wrapped)
@@ -549,13 +549,13 @@ RotoZoomInit:
 
     ; get offset increments in RAM code where data will be copied in
     ld hl, RotoRAMBakeIncs
-    ld d, RotoRAMCodeBakePosA0 - RotoRAMCodeStart + 1
+    ld d, RotoRAMCodeBakePosY0 - RotoRAMCodeStart + 1
     ld e, 0
 -:    
     ld (hl), d
     inc hl
     
-    ld d, RotoRAMCodeBakePosB0 - RotoRAMCodeBakePosA0
+    ld d, RotoRAMCodeBakePosX0 - RotoRAMCodeBakePosY0
 
     ld (hl), d
     inc hl
@@ -564,15 +564,15 @@ RotoZoomInit:
     and $0f
     cp 7
     jp nz, +
-    ld d, RotoRAMCodeBakePosA8 - RotoRAMCodeBakePosB7
+    ld d, RotoRAMCodeBakePosY8 - RotoRAMCodeBakePosX7
     jp ++
 +:
     cp 15
     jp nz, +
-    ld d, RotoRAMCodeBakePosA16 - RotoRAMCodeBakePosB15
+    ld d, RotoRAMCodeBakePosY16 - RotoRAMCodeBakePosX15
     jp ++
 +:
-    ld d, RotoRAMCodeBakePosA1 - RotoRAMCodeBakePosB0
+    ld d, RotoRAMCodeBakePosY1 - RotoRAMCodeBakePosX0
 ++:
     
     inc e
