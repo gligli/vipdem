@@ -497,10 +497,10 @@ RotoRAMCodeBakePos16:
     add hl, de ; add line x/y offset
     
     srl h ; push low y bit out
-    rl l ; push low y bit in + x 128 px wrap
+    rl l ; push low y bit in + x 128px wrap
     set 6, h ; slot 1 address + y 128px wrap
 
-    rlca
+    add a, a
     or (hl)
 .endm
 
@@ -662,12 +662,10 @@ RotoLineLoop:
     jp RAMCode
 RotoRAMCodeStart:    
     .repeat 2 index x_dummy
-        xor a
         .repeat 8 index x_bit
             RotoZoomGetPixel x_dummy * 16 + x_bit
         .endr
         ld b, a
-        xor a
         .repeat 8 index x_bit
             RotoZoomGetPixel x_dummy * 16 + x_bit + 8
         .endr
@@ -696,7 +694,7 @@ RotoRAMCodeRet:
 
 .macro MonoFBPixel args x_byte_, pos
     ld l, 8 * x_byte_ + pos
-    rlca
+    add a, a
     or (hl)
 .endm
     
@@ -705,7 +703,6 @@ UpdateMonoFB:
     ld b, 24
 -:
     .repeat 32 index x_byte
-        xor a
         MonoFBPixel x_byte, 0
         MonoFBPixel x_byte, 1
         MonoFBPixel x_byte, 3
