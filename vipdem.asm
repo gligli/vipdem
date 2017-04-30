@@ -58,6 +58,7 @@ banks 4
     in a, (VDPControl)
 
 ---:
+    in a, (VDPControl)
     .ifeq playSmp 1
         .repeat 10
             inc iy
@@ -197,33 +198,7 @@ banks 4
 .bank 2 slot 2
 .org $0000
 interrupt:
-    ex af, af'
     in a, (VDPControl) ;ack vdp int
-
-    jr nc, +
-
-    ; change tilemap ($3000)
-    ld a, $fd
-    out (VDPControl), a
-    ld a, $82
-    out (VDPControl), a
-
-    or a ; clear carry
-
-    ex af, af'
-    ei
-    ret
-
-+:
-    ; change tilemap ($3800)
-    ld a, $ff
-    out (VDPControl), a
-    ld a, $82
-    out (VDPControl), a
-
-    scf
-
-    ex af, af'
     ei
     ret
 
@@ -311,18 +286,8 @@ main:
         inc iy
     .endr
 
-    ; init line int
-    in a, (VDPControl) ; ack any previous int
-    ex af, af'
-    scf
-    ex af, af'
-    ld a, 3 ; every 4 lines
-    out (VDPControl), a
-    ld a, $8a
-    out (VDPControl), a
-
     ; turn screen on
-    ld a, %1000010
+    ld a, %1100010
 ;          ||||||`- Zoomed sprites -> 16x16 pixels
 ;          |||||`-- Doubled sprites -> 2 tiles per sprite, 8x16
 ;          ||||`--- Mega Drive mode 5 enable
@@ -334,7 +299,8 @@ main:
     ld a, $81
     out (VDPControl), a
 
-    ei
+    in a, (VDPControl) ; ack any previous int
+    ; ei
 
     ; anim slot
     ld a, 3
@@ -345,40 +311,16 @@ main:
 ;==============================================================
 
 MainLoop:
-    in a, (VDPScanline)
-    cp 192
-    jp c, +
--:
-    in a, (VDPScanline)
-    or a
-    jp nz, -
-+:
--:    
-    in a, (VDPScanline)
-    cp 192
-    jp c, -
+    WaitVBlank 0
 p0:
 
     ; frame index advance
     ld a, (CurFrameIdx)
     inc a
     ld (CurFrameIdx), a
-    ld d, a
 
-    and 1
-    jp z, +
-    SetVDPAddress $3800 | VRAMWrite
-    jp ++
-+:
-    SetVDPAddress $3000 | VRAMWrite
-++:
-    xor a
-    ld hl, LocalTilemapEnd - 1
-    ld c, VDPData
-    .repeat TileMapSize / 2
-        outd
-        ind
-    .endr
+    ; VRAM tilemap address
+    SetVDPAddress $37ff | VRAMWrite
 
     ; RotoZoom control using D-Pad
     in a, (IOPortA)
@@ -395,72 +337,60 @@ p0:
     bit 4, a
     jp z, ++
 
-    ld bc, $0004
+    ld bc, $0010
 
+    ld hl, (RotoVY)
     bit 0, a
     jp nz, +
-        ld hl, (RotoVY)
         or a
         sbc hl, bc
-        ld (RotoVY), hl
 +:
     bit 1, a
     jp nz, +
-        ld hl, (RotoVY)
         add hl, bc
-        ld (RotoVY), hl
 +:
+    ld (RotoVY), hl
+    ld hl, (RotoVX)
     bit 2, a
     jp nz, +
-        ld hl, (RotoVX)
         or a
         sbc hl, bc
-        ld (RotoVX), hl
 +:
     bit 3, a
     jp nz, +
-        ld hl, (RotoVX)
         add hl, bc
-        ld (RotoVX), hl
 +:
+    ld (RotoVX), hl
     jp +++
-    
+   
 ++:
-    ld bc, $0100
-
+    ld bc, $0200
+    ld hl, (RotoY)
     bit 0, a
     jp nz, +
-        ld hl, (RotoY)
         or a
         sbc hl, bc
-        ld (RotoY), hl
 +:
     bit 1, a
     jp nz, +
-        ld hl, (RotoY)
         add hl, bc
-        ld (RotoY), hl
 +:
+    ld (RotoY), hl
+    ld hl, (RotoX)
     bit 2, a
     jp nz, +
-        ld hl, (RotoX)
         or a
         sbc hl, bc
-        ld (RotoX), hl
 +:
     bit 3, a
     jp nz, +
-        ld hl, (RotoX)
         add hl, bc
-        ld (RotoX), hl
 +:
+    ld (RotoX), hl
 
 +++:
 
 p1:
-
-    ; interlace indicator
-    ld h, d
 
     ld a, (CurEffect)
     or a
@@ -540,6 +470,9 @@ RotoRAMCodeBakePos0:
 .endif
 .ifeq idx 1
 RotoRAMCodeBakePos1:
+.endif
+.ifeq idx 2
+RotoRAMCodeBakePos2:
 .endif
 .ifeq idx 3
 RotoRAMCodeBakePos3:
@@ -621,6 +554,11 @@ RotoZoomInit:
     ld d, RotoRAMCodeBakePos4 - RotoRAMCodeBakePos3 - 1
     jp ++
 +:
+    cp 1
+    jp nz, +
+    ld d, RotoRAMCodeBakePos2 - RotoRAMCodeBakePos1 - 1
+    jp ++
++:
     ld d, RotoRAMCodeBakePos1 - RotoRAMCodeBakePos0 - 1
 ++:
 
@@ -643,17 +581,6 @@ RotoZoomMonoFB:
     NegateHL
     exx
 
-    ld a, d
-    and 1
-    jp z, RotoDoPrecalc
-
-    exx
-    ex de, hl ; vy = - vy
-    RotoZoomX 2, 1
-    ex de, hl ; vy = - vy
-    RotoZoomY 2, 1
-    exx
-
 RotoDoPrecalc:
     ld (SPSave), sp
     ld sp, RotoPrecalcDataEnd
@@ -669,8 +596,8 @@ RotoDoPrecalc:
     RotoZoomY 1, 1
 
     RotoZoomPushIncs
-    RotoZoomX 3, 1
-    RotoZoomY 3, 1
+    RotoZoomX 1, 1
+    RotoZoomY 1, 1
     exx
 
     dec c
@@ -695,7 +622,7 @@ RotoDoPrecalc:
     ld b, 0
 -:
     exx
-    .repeat 8
+    .repeat 16
         RotoZoomX 1, 0
         RotoZoomY 1, 0
         RotoZoomBakeIncs 1
@@ -725,10 +652,13 @@ RotoLineLoop:
     jp RAMCode
 RotoRAMCodeStart:
     .repeat 2 index x_dummy
-        .repeat 4 index x_bit
-            RotoZoomGetPixel x_dummy * 4 + x_bit
-        .endr
-        push af
+        RotoZoomGetPixel x_dummy * 4 + 0
+        RotoZoomGetPixel x_dummy * 4 + 1
+        ld c, VDPData
+        in (c)
+        RotoZoomGetPixel x_dummy * 4 + 2
+        RotoZoomGetPixel x_dummy * 4 + 3
+        out (VDPData), a
     .endr
 RotoRAMCodeEnd:
     jp RotoRAMCodeRet
@@ -802,25 +732,11 @@ PseudoMode7MonoFB:
     NegateHL
     exx
 
-    ld a, d
-    and 1
-    jp z, PM7DoPrecalc
-
-    exx
-    ex de, hl ; vy = - vy
-    RotoZoomX 2, 1
-    ex de, hl ; vy = - vy
-    RotoZoomY 2, 1
-    exx
-
 PM7DoPrecalc:
     ld (SPSave), sp
     ld sp, RotoPrecalcDataEnd
 
-    ld a, d ; interlace indicator
-    and 1
-    rlca
-    ;xor a
+    xor a
     exx
     ex de, hl ; vy = - vy
 -:
@@ -828,13 +744,12 @@ PM7DoPrecalc:
     RotoZoomX 1, 1
     RotoZoomY 1, 1
     
-    add a, 1
     
     PM7PushIncs
-    RotoZoomX 3, 1
-    RotoZoomY 3, 1
+    RotoZoomX 1, 1
+    RotoZoomY 1, 1
 
-    add a, 7
+    add a, 8
     
     cp 192
     jp c, -
@@ -847,10 +762,7 @@ PM7DoPrecalc:
     ; line increments of vx
     
     ld sp, RotoRAMBakeIncs + 48 ; reusing this buffer for line incs
-    ld a, d ; interlace indicator
-    or $fe
-    cpl
-    add a, 47
+    ld a, 48
     ld c, a
 -:
     ld a, c
@@ -876,8 +788,10 @@ PM7PrecalcEnd:
 
     ld sp, LocalTilemapEnd
     exx
-    ld l, 12 ; line counter
+    ld l, 13 ; line counter
     exx
+    
+    ld c, VDPData
 
     ; main loop on lines pairs
 
@@ -908,11 +822,17 @@ PM7LineLoop:
         
     RotoGetLineOffsets 0
     
-    .repeat 32 index x_dummy
-        .repeat 8 index x_bit
-            PM7GetPixel x_dummy * 8 + x_bit
+    .repeat 32 index x_byte
+        .repeat 4 index x_bit
+            PM7GetPixel x_byte * 8 + x_bit
         .endr
-        push af
+        ex af, af'
+        in a, (VDPData)
+        ex af, af'
+        .repeat 4 index x_bit
+            PM7GetPixel x_byte * 8 + x_bit + 4
+        .endr
+        out (VDPData), a
     .endr
 
     exx
