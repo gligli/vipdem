@@ -122,6 +122,22 @@ banks 4
     ld d, a
 .endm
 
+.macro AddAToBC
+    add a, c
+    ld c, a
+    adc a, b
+    sub c
+    ld b, a
+.endm
+
+.macro AddAToIX
+    add a, ixl
+    ld ixl, a
+    adc a, ixh
+    sub ixl
+    ld ixh, a
+.endm
+
 .macro NegateHL
     xor a
     sub l
@@ -154,19 +170,21 @@ banks 4
 ;==============================================================
 
 .enum $c000 export
+    LocalTilemap      dsb TileMapSize + 256
+    LocalTilemapEnd   .
     RotoPrecalcData   dsb 96 ; align 256
     RotoPrecalcDataEnd .
     RotoRAMBakeAlign  dsb 32
     RotoRAMBakeIncs   dsb 128 ; align 128
     RotoRAMBakeIncsEnd .
-    MonoFB            dsb 1600
-    MonoFBEnd          .
 
     SPSave            dw
     CurFrameIdx       dw
+    RotoX             dw ; (8.8 fixed point)
+    RotoY             dw ; (8.8 fixed point)
     RotoVX            dw ; (8.8 fixed point)
     RotoVY            dw ; (8.8 fixed point)
-    DoAnim            db
+    CurEffect         db  
 
     ; keep this last
     RAMCode           .
@@ -234,8 +252,7 @@ main:
     ld (hl), b
     inc hl
     ld a,h
-    sub $e0
-    or l
+    cp $e0
     jr nz,-
 
     ; set up VDP registers
@@ -268,6 +285,9 @@ main:
     xor a
     ld (CurFrameIdx), a
     ld (CurFrameIdx + $01), a
+
+    ld a, 0
+    ld (CurEffect), a
 
     ; init RotoZoom
     call RotoZoomInit
@@ -353,7 +373,7 @@ p0:
     SetVDPAddress $3000 | VRAMWrite
 ++:
     xor a
-    ld hl, MonoFBEnd - 1
+    ld hl, LocalTilemapEnd - 1
     ld c, VDPData
     .repeat TileMapSize / 2
         outd
@@ -362,20 +382,21 @@ p0:
 
     ; RotoZoom control using D-Pad
     in a, (IOPortA)
-    ld bc, $0004
-    bit 4, a
-    jp nz, +
-        ld bc, $0010
-+:
     bit 5, a
     jp nz, +
         push af
-        ld a, (DoAnim)
+        ld a, (CurEffect)
         cpl
-        or 1
-        ld (DoAnim), a
+        ld (CurEffect), a
         pop af
+        call RotoZoomInit
 +:
+
+    bit 4, a
+    jp z, ++
+
+    ld bc, $0004
+
     bit 0, a
     jp nz, +
         ld hl, (RotoVY)
@@ -402,14 +423,52 @@ p0:
         add hl, bc
         ld (RotoVX), hl
 +:
+    jp +++
+    
+++:
+    ld bc, $0100
+
+    bit 0, a
+    jp nz, +
+        ld hl, (RotoY)
+        or a
+        sbc hl, bc
+        ld (RotoY), hl
++:
+    bit 1, a
+    jp nz, +
+        ld hl, (RotoY)
+        add hl, bc
+        ld (RotoY), hl
++:
+    bit 2, a
+    jp nz, +
+        ld hl, (RotoX)
+        or a
+        sbc hl, bc
+        ld (RotoX), hl
++:
+    bit 3, a
+    jp nz, +
+        ld hl, (RotoX)
+        add hl, bc
+        ld (RotoX), hl
++:
+
++++:
 
 p1:
 
     ; interlace indicator
     ld h, d
 
+    ld a, (CurEffect)
+    or a
+    jp nz, +
     call RotoZoomMonoFB
-p2:
+    jp MainLoop
++:
+    call PseudoMode7MonoFB
     jp MainLoop
 
 ;==============================================================
@@ -507,13 +566,35 @@ RotoRAMCodeBakePos4:
     ex de, hl
 .endm
 
+.macro RotoGetLineOffsets args fixup
+    ld h, >RotoPrecalcData
+    ; advance hl "line pair" items
+    ld l, a
+    ; even line
+    ; y coord
+    ld c, (hl)
+    inc l
+    ; x coord
+    ld b, (hl)
+    inc l
+    ; odd line
+    ; y coord
+    ld e, (hl)
+    inc l
+    ; x coord
+    ld d, (hl)
+.ifeq fixup 1
+    ; fixup regs
+    ld h, b
+    ld l, c
+.endif
+.endm
+
 RotoZoomInit:
     ld hl, $0200
     ld (RotoVX), hl
     ld hl, $0000
     ld (RotoVY), hl
-    ld a, 1
-    ld (DoAnim), a
 
     ; copy code to RAM, duplicating it
     ld de, RAMCode
@@ -554,8 +635,8 @@ RotoZoomMonoFB:
     ; precaclulate increments for one line
 
     exx
-    ld ix, 0 ; x
-    ld iy, 0 ; y
+    ld ix, (RotoX) ; x
+    ld iy, (RotoY) ; y
     ld bc, (RotoVX) ; vx
     ld de, (RotoVY) ; vy
     ld hl, (RotoVY) ; -vy
@@ -563,7 +644,6 @@ RotoZoomMonoFB:
     exx
 
     ld a, d
-    ld de, 0
     and 1
     jp z, RotoDoPrecalc
 
@@ -609,8 +689,8 @@ RotoDoPrecalc:
     ld de, RotoRAMBakeIncs
     ld hl, RAMCode
 
-    ld ix, 0 ; x
-    ld iy, 0 ; y
+    ld ix, (RotoX) ; x
+    ld iy, (RotoY) ; y
 
     ld b, 0
 -:
@@ -629,7 +709,7 @@ RotoDoPrecalc:
 ;    ret
 RotoPrecalcEnd:
 
-    ld sp, MonoFBEnd
+    ld sp, LocalTilemapEnd
     ld l, 24 ; line counter
 
     ; main loop on lines pairs
@@ -640,26 +720,8 @@ RotoLineLoop:
     add a, a
     add a, a
     exx
-    ld h, >RotoPrecalcData
-    ; advance hl "line pair" items
-    ld l, a
-    ; even line
-    ; y coord
-    ld c, (hl)
-    inc l
-    ; x coord
-    ld b, (hl)
-    inc l
-    ; odd line
-    ; y coord
-    ld e, (hl)
-    inc l
-    ; x coord
-    ld d, (hl)
-    ; fixup regs
-    ld h, b
-    ld l, c
-    
+    RotoGetLineOffsets 1    
+     
     jp RAMCode
 RotoRAMCodeStart:
     .repeat 2 index x_dummy
@@ -681,6 +743,187 @@ RotoRAMCodeRet:
 
     ret
 
+;==============================================================
+; Pseudo mode 7 code
+;==============================================================
+
+.macro PM7PushIncs
+    push af
+    
+    ; x coord
+    add a, ixh
+    ld l, a
+
+    ; y coord
+    ld a, iyh
+    ld h, a
+
+    pop af
+
+    push hl
+.endm
+
+.macro PM7GetPixel args idx
+    .ifeq (idx & 1) 0
+        exx
+        RotoZoomX 1, 0
+        RotoZoomY 1, 0
+        exx
+    .endif
+
+    ex de, hl
+    ld d, iyh
+    ld e, ixh
+    ex de, hl
+
+    .ifeq (idx & 1) 0
+        add hl, bc ; add line x/y offset
+    .else
+        add hl, de ; add line x/y offset
+    .endif
+    
+    res 7, h ; texture starts at $0000
+
+    add a, a
+    or (hl)
+.endm
+
+PseudoMode7MonoFB:
+    ex de, hl
+
+    ; precaclulate increments for one line
+
+    exx
+    ld ix, (RotoX) ; x
+    ld iy, (RotoY) ; y
+    ld bc, (RotoVX) ; vx
+    ld de, (RotoVY) ; vy
+    ld hl, (RotoVY) ; -vy
+    NegateHL
+    exx
+
+    ld a, d
+    and 1
+    jp z, PM7DoPrecalc
+
+    exx
+    ex de, hl ; vy = - vy
+    RotoZoomX 2, 1
+    ex de, hl ; vy = - vy
+    RotoZoomY 2, 1
+    exx
+
+PM7DoPrecalc:
+    ld (SPSave), sp
+    ld sp, RotoPrecalcDataEnd
+
+    ld a, d ; interlace indicator
+    and 1
+    rlca
+    ;xor a
+    exx
+    ex de, hl ; vy = - vy
+-:
+    PM7PushIncs
+    RotoZoomX 1, 1
+    RotoZoomY 1, 1
+    
+    add a, 1
+    
+    PM7PushIncs
+    RotoZoomX 3, 1
+    RotoZoomY 3, 1
+
+    add a, 7
+    
+    cp 192
+    jp c, -
+
+    ; hl thrashed by PM7PushIncs
+    ld hl, (RotoVY) ; vy
+    ex de, hl ; vy = - vy
+    exx
+    
+    ; line increments of vx
+    
+    ld sp, RotoRAMBakeIncs + 48 ; reusing this buffer for line incs
+    ld a, d ; interlace indicator
+    or $fe
+    cpl
+    add a, 47
+    ld c, a
+-:
+    ld a, c
+    add a, a
+    add a, a
+    ld e, a
+
+    ld d, 0
+    sla e
+    rl d
+    sla e
+    rl d
+
+    ld hl, (RotoVX)
+    add hl, de
+    push hl
+
+    dec c
+    dec c
+    jp p, -
+
+PM7PrecalcEnd:
+
+    ld sp, LocalTilemapEnd
+    exx
+    ld l, 12 ; line counter
+    exx
+
+    ; main loop on lines pairs
+
+PM7LineLoop:
+    ld ix, (RotoX) ; x
+    ld iy, (RotoY) ; y
+
+    exx
+    ; get line inc
+    ld a, l
+    add a, a
+    add a, <RotoRAMBakeIncs - 2
+    ld b, >RotoRAMBakeIncs
+    ld c, a
+    ld a, (bc)
+    ld h, a
+    inc c
+    ld a, (bc)
+    ld b, a
+    ld c, h
+
+    ; for line offsets
+    ld a, l
+    dec a
+    add a, a
+    add a, a
+    exx
+        
+    RotoGetLineOffsets 0
+    
+    .repeat 32 index x_dummy
+        .repeat 8 index x_bit
+            PM7GetPixel x_dummy * 8 + x_bit
+        .endr
+        push af
+    .endr
+
+    exx
+    dec l
+    exx
+    jp nz, PM7LineLoop
+
+    ld sp, (SPSave)
+
+    ret
+    
 ;==============================================================
 ; Data
 ;==============================================================
