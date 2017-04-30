@@ -318,7 +318,21 @@ p0:
     ld (CurFrameIdx), a
 
     ; VRAM tilemap address
+    and 1
+    jp z, +
+    ld a, $fd
+    out (VDPControl), a
+    ld a, $82
+    out (VDPControl), a
     SetVDPAddress $37ff | VRAMWrite
+    jp ++
++:
+    ld a, $ff
+    out (VDPControl), a
+    ld a, $82
+    out (VDPControl), a
+    SetVDPAddress $2fff | VRAMWrite
+++:
 
     ; RotoZoom control using D-Pad
     in a, (IOPortA)
@@ -338,24 +352,24 @@ p0:
     ld bc, $0010
 
     ld hl, (RotoVY)
-    bit 0, a
-    jp nz, +
+    rrca
+    jp c, +
         or a
         sbc hl, bc
 +:
-    bit 1, a
-    jp nz, +
+    rrca
+    jp c, +
         add hl, bc
 +:
     ld (RotoVY), hl
     ld hl, (RotoVX)
-    bit 2, a
-    jp nz, +
+    rrca
+    jp c, +
         or a
         sbc hl, bc
 +:
-    bit 3, a
-    jp nz, +
+    rrca
+    jp c, +
         add hl, bc
 +:
     ld (RotoVX), hl
@@ -364,24 +378,24 @@ p0:
 ++:
     ld bc, $0200
     ld hl, (RotoY)
-    bit 0, a
-    jp nz, +
+    rrca
+    jp c, +
         or a
         sbc hl, bc
 +:
-    bit 1, a
-    jp nz, +
+    rrca
+    jp c, +
         add hl, bc
 +:
     ld (RotoY), hl
     ld hl, (RotoX)
-    bit 2, a
-    jp nz, +
+    rrca
+    jp c, +
         or a
         sbc hl, bc
 +:
-    bit 3, a
-    jp nz, +
+    rrca
+    jp c, +
         add hl, bc
 +:
     ld (RotoX), hl
@@ -845,15 +859,11 @@ VDPInitData:
 VDPInitDataEnd:
 
 LocalPalette:
-.repeat 2
-    .db 32
+.repeat 4
+    .db 1
+    .db 27
+    .db 16
     .db 47
-    .db 16
-    .db 16
-    .db 32
-    .db 63
-    .db 16
-    .db 16
 .endr
 .repeat 16
     .db 16
