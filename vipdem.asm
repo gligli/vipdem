@@ -159,15 +159,15 @@ banks 4
     RotoPrecalcData   dsb 96 ; align 256
     RotoPrecalcDataEnd .
     MonoFB            dsb 800
-    MonoFBEnd          . 
+    MonoFBEnd          .
 
     SPSave            dw
     CurFrameIdx       dw
     RotoVX            dw ; (8.8 fixed point)
     RotoVY            dw ; (8.8 fixed point)
     DoAnim            db
-        
-    ; keep this last    
+
+    ; keep this last
     RAMCode           .
 .ende
 
@@ -193,7 +193,7 @@ init_tab: ; table must exist within first 1K of ROM
 .org $0038
     ex af, af'
     in a, (VDPControl) ;ack vdp int
-    
+
     jr nc, +
 
     ; change tilemap ($3000)
@@ -203,12 +203,12 @@ init_tab: ; table must exist within first 1K of ROM
     out (VDPControl), a
 
     or a ; clear carry
-    
+
     ex af, af'
     ei
     ret
 
-+:    
++:
     ; change tilemap ($3800)
     ld a, $ff
     out (VDPControl), a
@@ -216,17 +216,17 @@ init_tab: ; table must exist within first 1K of ROM
     out (VDPControl), a
 
     scf
-    
+
     ex af, af'
     ei
     ret
-    
+
 .org $0066
     rst 0
 
 main:
     ; set up stack
-    
+
     ld sp, $dff0
 
     ; set up VDP registers
@@ -247,7 +247,7 @@ main:
     sub $e0
     or l
     jr nz,-
-    
+
     ; clear VRAM
 
     ; 1. cet VRAM write address to $0000
@@ -274,7 +274,7 @@ main:
 
     ; init RotoZoom
     call RotoZoomInit
-    
+
     ; load tiles (Monochrome framebuffer emulation)
     SetVDPAddress $0000 | VRAMWrite
     ld hl,MonoFBData
@@ -316,9 +316,9 @@ main:
     out (VDPControl), a
     ld a, $81
     out (VDPControl), a
-    
+
     ei
-    
+
 ;==============================================================
 ; Main loop
 ;==============================================================
@@ -329,7 +329,7 @@ MainLoop:
     jp c, MainLoop
 p0:
 
-    ; frame index advance 
+    ; frame index advance
     ld a, (CurFrameIdx)
     inc a
     ld (CurFrameIdx), a
@@ -349,7 +349,7 @@ p0:
     .repeat 768
         outd
         out (VDPData), a
-    .endr   
+    .endr
 
     ; RotoZoom control using D-Pad
     in a, (IOPortA)
@@ -397,8 +397,8 @@ p0:
 p1:
     ; anim slot
     ld a, 2
-    ld (MapperSlot1), a    
-    
+    ld (MapperSlot1), a
+
     ; anim source pointer
     ld hl, FixedData
     bit 0, d
@@ -455,7 +455,7 @@ p2:
 .macro RotoZoomBakeIncs args times
     exx
 
-.repeat times    
+.repeat times
     ld a, (de)
     inc e
     ld c, a
@@ -466,7 +466,7 @@ p2:
     ld (hl), a
 
     inc hl
-    
+
     ; y coord
     ld a, iyh
     ld (hl), a
@@ -495,13 +495,13 @@ RotoRAMCodeBakePos15:
 RotoRAMCodeBakePos16:
 .endif
     ld hl, $aa55 ; placeholder value (x/y coordinates will be copied in)
-   
+
 .ifeq (idx & 1) 0
     add hl, bc ; add line x/y offset
 .else
     add hl, de ; add line x/y offset
 .endif
-    
+
     srl h ; push low y bit out
     rl l ; push low y bit in + x 128px wrap
     set 6, h ; slot 1 address + y 128px wrap
@@ -532,10 +532,10 @@ RotoZoomInit:
     ld hl, RotoRAMBakeIncs
     ld d, RotoRAMCodeBakePos0 - RotoRAMCodeStart + 1
     ld e, 0
--:    
+-:
     ld (hl), d
     inc hl
-        
+
     ld a, e
     and $0f
     cp 7
@@ -550,10 +550,10 @@ RotoZoomInit:
 +:
     ld d, RotoRAMCodeBakePos1 - RotoRAMCodeBakePos0 - 1
 ++:
-    
+
     inc e
     jp nz, -
-       
+
     ret
 
 RotoZoomMonoFB:
@@ -569,19 +569,19 @@ RotoZoomMonoFB:
     ld hl, (RotoVY) ; -vy
     NegateHL
     exx
-    
+
     ld a, d
     ld de, 0
     and 1
     jp z, RotoDoPrecalc
-    
+
     exx
     ex de, hl ; vy = - vy
     RotoZoomX 2, 1
     ex de, hl ; vy = - vy
     RotoZoomY 2, 1
     exx
-    
+
 RotoDoPrecalc:
     ld (SPSave), sp
     ld sp, RotoPrecalcDataEnd
@@ -590,7 +590,7 @@ RotoDoPrecalc:
     exx
     ex de, hl ; vy = - vy
     exx
--:    
+-:
     exx
     RotoZoomPushIncs
     RotoZoomX 1, 1
@@ -616,12 +616,12 @@ RotoDoPrecalc:
 
     ld de, RotoRAMBakeIncs
     ld hl, RAMCode
-    
+
     ld ix, 0 ; x
     ld iy, 0 ; y
 
     ld b, 0
--:    
+-:
     exx
     .repeat 16
         RotoZoomX 1, 0
@@ -629,19 +629,19 @@ RotoDoPrecalc:
         RotoZoomBakeIncs 2
     .endr
     exx
-    
+
     xor a
     cp e
     jp nz, -
-    
+
 ;    ret
 RotoPrecalcEnd:
 
     ld sp, MonoFBEnd
     ld l, 23 ; line counter
-    
+
     ; main loop on lines pairs
-    
+
 RotoLineLoop:
     ld a, l
     dec a
@@ -664,9 +664,9 @@ RotoLineLoop:
     inc l
     ; x coord
     ld d, (hl)
-    
+
     jp RAMCode
-RotoRAMCodeStart:    
+RotoRAMCodeStart:
     .repeat 2 index x_dummy
         .repeat 8 index x_bit
             RotoZoomGetPixel x_dummy * 16 + x_bit
@@ -676,18 +676,18 @@ RotoRAMCodeStart:
             RotoZoomGetPixel x_dummy * 16 + x_bit + 8
         .endr
         ld ixl, a
-        
+
         push ix
     .endr
 RotoRAMCodeEnd:
     jp RotoRAMCodeRet
 RotoRAMCodeRet:
-    
+
     exx
 
     dec l
     jp nz, RotoLineLoop
-    
+
     ld sp, (SPSave)
 
     ret
@@ -701,7 +701,7 @@ RotoRAMCodeRet:
     add a, a
     or (hl)
 .endm
-    
+
 UpdateMonoFB:
     ld (SPSave), sp
     ld sp, MonoFBEnd
@@ -716,7 +716,7 @@ UpdateMonoFB:
             MonoFBPixel x_word, x_bit + 8
         .endr
         ld e, a
-        
+
         push de
     .endr
 
