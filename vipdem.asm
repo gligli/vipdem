@@ -154,12 +154,12 @@ banks 4
 ;==============================================================
 
 .enum $c000 export
-    RotoRAMBakeIncs   dsb 256  
+    RotoRAMBakeIncs   dsb 256
     RotoRAMBakeIncsEnd .
+    RotoPrecalcData   dsb 96 ; align 256
+    RotoPrecalcDataEnd .
     MonoFB            dsb 800
     MonoFBEnd          . 
-    RotoPrecalcData   dsb 48
-    RotoPrecalcDataEnd .
 
     SPSave            dw
     CurFrameIdx       dw
@@ -452,9 +452,10 @@ p2:
     push hl
 .endm
 
-.macro RotoZoomBakeIncs
+.macro RotoZoomBakeIncs args times
     exx
-    
+
+.repeat times    
     ld a, (de)
     inc e
     ld c, a
@@ -469,6 +470,7 @@ p2:
     ; y coord
     ld a, iyh
     ld (hl), a
+.endr
 
     exx
 .endm
@@ -494,7 +496,11 @@ RotoRAMCodeBakePos16:
 .endif
     ld hl, $aa55 ; placeholder value (x/y coordinates will be copied in)
    
+.ifeq (idx & 1) 0
+    add hl, bc ; add line x/y offset
+.else
     add hl, de ; add line x/y offset
+.endif
     
     srl h ; push low y bit out
     rl l ; push low y bit in + x 128px wrap
@@ -586,9 +592,13 @@ RotoDoPrecalc:
     exx
 -:    
     exx
-    RotoZoomX 4, 1
-    RotoZoomY 4, 1
     RotoZoomPushIncs
+    RotoZoomX 1, 1
+    RotoZoomY 1, 1
+
+    RotoZoomPushIncs
+    RotoZoomX 3, 1
+    RotoZoomY 3, 1
     exx
 
     dec c
@@ -600,7 +610,9 @@ RotoDoPrecalc:
     ex de, hl ; vy = - vy
     exx
 
-    ; zig-zagging through 2 consecutive lines (pattern: ¨¨|_| )
+    ; copy line pixels offsets into RAM code
+
+    ld sp, (SPSave)
 
     ld de, RotoRAMBakeIncs
     ld hl, RAMCode
@@ -611,26 +623,10 @@ RotoDoPrecalc:
     ld b, 0
 -:    
     exx
-    .repeat 32
+    .repeat 16
         RotoZoomX 1, 0
         RotoZoomY 1, 0
-        RotoZoomBakeIncs
-
-        ex de, hl ; vy = - vy
-        RotoZoomX 1, 1
-        ex de, hl ; vy = - vy
-        RotoZoomY 1, 1
-        RotoZoomBakeIncs
-
-        RotoZoomX 1, 0
-        RotoZoomY 1, 0
-        RotoZoomBakeIncs
-
-        RotoZoomX 1, 1
-        NegateBC ; vx = - vx
-        RotoZoomY 1, 1
-        ld bc, (RotoVX) ; vx
-        RotoZoomBakeIncs
+        RotoZoomBakeIncs 2
     .endr
     exx
     
@@ -642,22 +638,32 @@ RotoDoPrecalc:
 RotoPrecalcEnd:
 
     ld sp, MonoFBEnd
-    ld hl, 23 ; line counter
+    ld l, 23 ; line counter
     
     ; main loop on lines pairs
     
 RotoLineLoop:
-    ld a, h
+    ld a, l
+    dec a
+    add a, a
+    add a, a
     exx
-    ld hl, RotoPrecalcDataEnd - 1
-    ; advance hl "line" items
-    add a, l
+    ld h, >RotoPrecalcData
+    ; advance hl "line pair" items
     ld l, a
+    ; even line
     ; y coord
-    ld d, (hl)
-    dec l
+    ld c, (hl)
+    inc l
     ; x coord
+    ld b, (hl)
+    inc l
+    ; odd line
+    ; y coord
     ld e, (hl)
+    inc l
+    ; x coord
+    ld d, (hl)
     
     jp RAMCode
 RotoRAMCodeStart:    
@@ -665,13 +671,13 @@ RotoRAMCodeStart:
         .repeat 8 index x_bit
             RotoZoomGetPixel x_dummy * 16 + x_bit
         .endr
-        ld b, a
+        ld ixh, a
         .repeat 8 index x_bit
             RotoZoomGetPixel x_dummy * 16 + x_bit + 8
         .endr
-        ld c, a
+        ld ixl, a
         
-        push bc
+        push ix
     .endr
 RotoRAMCodeEnd:
     jp RotoRAMCodeRet
@@ -679,8 +685,6 @@ RotoRAMCodeRet:
     
     exx
 
-    dec h
-    dec h
     dec l
     jp nz, RotoLineLoop
     
@@ -692,27 +696,28 @@ RotoRAMCodeRet:
 ; MonoFB code
 ;==============================================================
 
-.macro MonoFBPixel args x_byte_, pos
-    ld l, 8 * x_byte_ + pos
+.macro MonoFBPixel args x_word_, x_bit_
+    ld l, 16 * x_word_ + (x_bit_ ~ 1)
     add a, a
     or (hl)
 .endm
     
 UpdateMonoFB:
-    ld de, MonoFBEnd - 1
+    ld (SPSave), sp
+    ld sp, MonoFBEnd
     ld b, 24
 -:
-    .repeat 32 index x_byte
-        MonoFBPixel x_byte, 0
-        MonoFBPixel x_byte, 1
-        MonoFBPixel x_byte, 3
-        MonoFBPixel x_byte, 2
-        MonoFBPixel x_byte, 4
-        MonoFBPixel x_byte, 5
-        MonoFBPixel x_byte, 7
-        MonoFBPixel x_byte, 6
-        ld (de), a
-        dec de
+    .repeat 16 index x_word
+        .repeat 8 index x_bit
+            MonoFBPixel x_word, x_bit
+        .endr
+        ld d, a
+        .repeat 8 index x_bit
+            MonoFBPixel x_word, x_bit + 8
+        .endr
+        ld e, a
+        
+        push de
     .endr
 
     .repeat 2
@@ -721,6 +726,8 @@ UpdateMonoFB:
 
     dec b
     jp nz, -
+
+    ld sp, (SPSave)
 
     ret
 
