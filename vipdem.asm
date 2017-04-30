@@ -171,8 +171,6 @@ banks 4
 ;==============================================================
 
 .enum $c000 export
-    LocalTilemap      dsb TileMapSize + 256
-    LocalTilemapEnd   .
     RotoPrecalcData   dsb 96 ; align 256
     RotoPrecalcDataEnd .
     RotoRAMBakeAlign  dsb 32
@@ -451,7 +449,7 @@ p1:
     ld a, ixh
     ld (hl), a
 
-    inc hl
+    inc l
 
     ; y coord
     ld a, iyh
@@ -577,7 +575,8 @@ RotoZoomMonoFB:
     ld iy, (RotoY) ; y
     ld bc, (RotoVX) ; vx
     ld de, (RotoVY) ; vy
-    ld hl, (RotoVY) ; -vy
+    ld h, d
+    ld l, e
     NegateHL
     exx
 
@@ -636,7 +635,7 @@ RotoDoPrecalc:
 ;    ret
 RotoPrecalcEnd:
 
-    ld sp, LocalTilemapEnd
+    ld sp, (SPSave)
     ld l, 24 ; line counter
 
     ; main loop on lines pairs
@@ -669,26 +668,21 @@ RotoRAMCodeRet:
     dec l
     jp nz, RotoLineLoop
 
-    ld sp, (SPSave)
-
     ret
 
 ;==============================================================
 ; Pseudo mode 7 code
 ;==============================================================
 
-.macro PM7PushIncs
-    push af
-    
+.macro PM7PushIncs args line
     ; x coord
+    ld a, (line >> 1) * 8
     add a, ixh
     ld l, a
 
     ; y coord
     ld a, iyh
     ld h, a
-
-    pop af
 
     push hl
 .endm
@@ -739,20 +733,12 @@ PM7DoPrecalc:
     xor a
     exx
     ex de, hl ; vy = - vy
--:
-    PM7PushIncs
-    RotoZoomX 1, 1
-    RotoZoomY 1, 1
-    
-    
-    PM7PushIncs
-    RotoZoomX 1, 1
-    RotoZoomY 1, 1
 
-    add a, 8
-    
-    cp 192
-    jp c, -
+    .repeat 48 index y_line
+        PM7PushIncs y_line
+        RotoZoomX 1, 1
+        RotoZoomY 1, 1
+    .endr
 
     ; hl thrashed by PM7PushIncs
     ld hl, (RotoVY) ; vy
@@ -786,9 +772,9 @@ PM7DoPrecalc:
 
 PM7PrecalcEnd:
 
-    ld sp, LocalTilemapEnd
+    ld sp, (SPSave)
     exx
-    ld l, 13 ; line counter
+    ld l, 14 ; line counter
     exx
     
     ld c, VDPData
@@ -839,8 +825,6 @@ PM7LineLoop:
     dec l
     exx
     jp nz, PM7LineLoop
-
-    ld sp, (SPSave)
 
     ret
     
