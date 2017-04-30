@@ -319,7 +319,7 @@ main:
     ; anim slot
     ld a, 3
     ld (MapperSlot1), a
-    
+
 ;==============================================================
 ; Main loop
 ;==============================================================
@@ -328,8 +328,11 @@ MainLoop:
     in a, (VDPScanline)
     cp 192
     jp c, +
-    halt
-+:  
+-:
+    in a, (VDPScanline)
+    or a
+    jp nz, -
++:
 -:    
     in a, (VDPScanline)
     cp 192
@@ -349,13 +352,12 @@ p0:
 +:
     SetVDPAddress $3000 | VRAMWrite
 ++:
-
+    xor a
     ld hl, MonoFBEnd - 1
     ld c, VDPData
-    .repeat 768
+    .repeat TileMapSize / 2
         outd
-        in a, (VDPData)
-        dec hl
+        ind
     .endr
 
     ; RotoZoom control using D-Pad
@@ -401,7 +403,6 @@ p0:
         ld (RotoVX), hl
 +:
 
-MainLoopStart:
 p1:
 
     ; interlace indicator
