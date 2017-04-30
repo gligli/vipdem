@@ -26,14 +26,12 @@ type
 procedure TBits2Byte.DoRun;
 var
   InCnt, i, j: Integer;
-  MS: TMemoryStream;
   OutFS: TFileStream;
   InFS: array[0..7] of TFileStream;
   InByte: array[0..7] of Byte;
   OutByte: Byte;
   Interlace: Boolean;
 begin
-  MS := TMemoryStream.Create;
   OutFS := TFileStream.Create(ParamStr(1), fmCreate);
   InCnt := ParamCount - 1;
   for i := 0 to InCnt - 1 do
@@ -54,30 +52,10 @@ begin
         InByte[i] := InByte[i] shr 1;
       end;
 
-      MS.WriteByte(OutByte);
+      OutFS.WriteByte(OutByte);
     end;
   end;
 
-  Interlace := False;
-  MS.Seek(0, soBeginning);
-  for i := 0 to ms.Size - 1 do
-  begin
-    if (i <> 0) and (i and $ff = 0) then
-      MS.Seek(128, soCurrent);
-
-    OutByte := MS.ReadByte;
-
-    if Interlace then
-      MS.Seek(-128, soCurrent)
-    else
-      MS.Seek(127, soCurrent);
-
-    Interlace := not Interlace;
-
-    OutFS.WriteByte(OutByte);
-  end;
-
-  MS.Free;
   OutFS.Free;
   for i := 0 to InCnt - 1 do
     InFS[i].Free;

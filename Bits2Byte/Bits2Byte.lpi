@@ -28,7 +28,7 @@
     <RunParams>
       <local>
         <FormatVersion Value="1"/>
-        <CommandLineParams Value="..\anim_128_1\anim1.bin ..\anim_128_1\0000.mono ..\anim_128_1\0001.mono ..\anim_128_1\0002.mono ..\anim_128_1\0003.mono ..\anim_128_1\0004.mono ..\anim_128_1\0005.mono ..\anim_128_1\0006.mono ..\anim_128_1\0007.mono"/>
+        <CommandLineParams Value="..\anim_128_1\fixed.bin ..\anim_128_1\1234.mono"/>
       </local>
     </RunParams>
     <Units Count="1">

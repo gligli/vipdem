@@ -17,10 +17,10 @@ banks 4
 .endro
 
 ;==============================================================
-; SDSC tag and SMS rom header
+; SMS rom header
 ;==============================================================
 
-.sdsctag 0.0,"VIP'17 demo","VIP'17 demo","GliGli"
+.smstag
 
 ;==============================================================
 ; SMS defines
@@ -175,22 +175,9 @@ banks 4
 ; Init code
 ;==============================================================
 
-.bank 0 slot 0
+.bank 2 slot 2
 .org $0000
-    di              ; disable interrupts
-    im 1            ; interrupt mode 1
-    ; this maps the first 48K of ROM to $0000-$BFFF
-    ld de, $FFFC
-    ld hl, init_tab
-    ld bc, $0004
-    ldir
-
-    jp main
-
-init_tab: ; table must exist within first 1K of ROM
-    .db $00, $00, $01, $02
-
-.org $0038
+interrupt:
     ex af, af'
     in a, (VDPControl) ;ack vdp int
 
@@ -221,20 +208,22 @@ init_tab: ; table must exist within first 1K of ROM
     ei
     ret
 
-.org $0066
-    rst 0
-
+init_tab: ; table must exist within this bank
+    .db $00, $00, $01, $02
+    
 main:
+    di              ; disable interrupts
+    im 1            ; interrupt mode 1
+    
+    ; this maps the first 48K of ROM to $0000-$BFFF
+    ld de, $FFFC
+    ld hl, init_tab
+    ld bc, $0004
+    ldir
+
     ; set up stack
 
     ld sp, $dff0
-
-    ; set up VDP registers
-
-    ld hl,VDPInitData
-    ld b,VDPInitDataEnd-VDPInitData
-    ld c,VDPControl
-    otir
 
     ; clear RAM
 
@@ -247,6 +236,13 @@ main:
     sub $e0
     or l
     jr nz,-
+
+    ; set up VDP registers
+
+    ld hl,VDPInitData
+    ld b,VDPInitDataEnd-VDPInitData
+    ld c,VDPControl
+    otir
 
     ; clear VRAM
 
@@ -319,6 +315,12 @@ main:
 
     ei
 
+    ; anim slot
+    ld a, 3
+    ld (MapperSlot1), a
+    
+    jp MainLoopStart
+    
 ;==============================================================
 ; Main loop
 ;==============================================================
@@ -394,23 +396,13 @@ p0:
         ld (RotoVX), hl
 +:
 
+MainLoopStart:
 p1:
-    ; anim slot
-    ld a, 2
-    ld (MapperSlot1), a
 
-    ; anim source pointer
-    ld hl, FixedData
-    bit 0, d
-    jp z, +
-    inc h
-+:
+    ; interlace indicator
+    ld h, d
 
-.ifeq 1 1
     call RotoZoomMonoFB
-.else
-    call UpdateMonoFB
-.endif
 p2:
     jp MainLoop
 
@@ -447,6 +439,7 @@ p2:
 
     ; y coord
     ld a, iyh
+    add a, a
     ld h, a
 
     push hl
@@ -469,6 +462,7 @@ p2:
 
     ; y coord
     ld a, iyh
+    add a, a
     ld (hl), a
 .endr
 
@@ -501,10 +495,8 @@ RotoRAMCodeBakePos16:
 .else
     add hl, de ; add line x/y offset
 .endif
-
-    srl h ; push low y bit out
-    rl l ; push low y bit in + x 128px wrap
-    set 6, h ; slot 1 address + y 128px wrap
+    
+    srl h ; texture starts at $0000
 
     add a, a
     or (hl)
@@ -638,7 +630,7 @@ RotoDoPrecalc:
 RotoPrecalcEnd:
 
     ld sp, MonoFBEnd
-    ld l, 23 ; line counter
+    ld l, 24 ; line counter
 
     ; main loop on lines pairs
 
@@ -693,50 +685,12 @@ RotoRAMCodeRet:
     ret
 
 ;==============================================================
-; MonoFB code
-;==============================================================
-
-.macro MonoFBPixel args x_word_, x_bit_
-    ld l, 16 * x_word_ + (x_bit_ ~ 1)
-    add a, a
-    or (hl)
-.endm
-
-UpdateMonoFB:
-    ld (SPSave), sp
-    ld sp, MonoFBEnd
-    ld b, 24
--:
-    .repeat 16 index x_word
-        .repeat 8 index x_bit
-            MonoFBPixel x_word, x_bit
-        .endr
-        ld d, a
-        .repeat 8 index x_bit
-            MonoFBPixel x_word, x_bit + 8
-        .endr
-        ld e, a
-
-        push de
-    .endr
-
-    .repeat 2
-        inc h
-    .endr
-
-    dec b
-    jp nz, -
-
-    ld sp, (SPSave)
-
-    ret
-
-;==============================================================
 ; Data
 ;==============================================================
 
 .bank 1 slot 1
 .org $0000
+
 PSGInitData:
 .db $9f $bf $df $ff $81 $00 $a1 $00 $c1 $00
 PSGInitDataEnd:
@@ -748,14 +702,14 @@ VDPInitDataEnd:
 
 LocalPalette:
 .repeat 2
-    .db 16
-    .db 16
     .db 32
     .db 47
     .db 16
     .db 16
     .db 32
     .db 63
+    .db 16
+    .db 16
 .endr
 .repeat 16
     .db 16
@@ -776,8 +730,16 @@ SpriteData:
 MonoFBData:
 .incbin "MonoFB.bin" fsize MonoFBSize
 
-.incdir "anim_128_1/"
-.bank 2 slot 1
+.bank 0 slot 0
 .org $0000
-FixedData:
-.incbin "fixed.bin"
+jp main
+.incbin "anim_128_1/fixed.bin" skip $03 read $35
+.org $0038
+jp interrupt
+.incbin "anim_128_1/fixed.bin" skip $3b read $2b
+.org $0066
+rst 0
+.incbin "anim_128_1/fixed.bin" skip $67 read $3f99
+.bank 3 slot 1
+.org $0000
+.incbin "anim_128_1/fixed.bin" skip $4000 read $4000
