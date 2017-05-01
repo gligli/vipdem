@@ -165,6 +165,22 @@ banks 4
     ld b,a
 .endm
 
+; 256 step cosinus
+; input in bc and output in a
+.macro GetCosBC
+    ld b, >CosLUT
+    ld a, (bc)
+.endm
+
+; 256 step sinus
+; input in bc and output in a
+.macro GetSinBC
+    ld b, >SinLUT
+    ld a, (bc)
+.endm
+    
+
+
 ;==============================================================
 ; RAM variables
 ;==============================================================
@@ -362,7 +378,7 @@ p0:
         add hl, bc
 +:
     ld (RotoScl), hl
-    ld bc, $0004
+    ld bc, $0002
     ld hl, (RotoRot)
     rrca
     jp c, +
@@ -500,25 +516,6 @@ MultiplyBCByDE:
     +:
     .endr
 
-    ret
-    
-; 512 step sinus
-; input in bc and output in a
-GetSinBC:
-    ld a, c
-    sub 128
-    ld c, a
-    /* fall through */
-
-; 512 step cosinus
-; input in bc and output in a
-GetCosBC:
-    rr b
-    ld b, >CosLUT
-    ld a, (bc)
-    ret nc
-    neg
-    
     ret
     
 ;==============================================================
@@ -694,12 +691,12 @@ RotoZoomMonoFB:
     ld de, (RotoScl) ; vy
 
     ld bc, (RotoRot) ; vx
-    call GetCosBC
+    GetCosBC
     call FPMultiplySignedAByDE    
     push hl
     
     ld bc, (RotoRot) ; vx
-    call GetSinBC
+    GetSinBC
     call FPMultiplySignedAByDE    
     ld d, h
     ld e, l
@@ -965,9 +962,11 @@ PM7LineLoop:
 ;==============================================================
 
 .bank 2 slot 2
-.org $3f00
+.org $3e00
+SinLUT:
+.dbsin 0, 255, 360 / 256, 127.999, 0
 CosLUT:
-.dbcos 0, 255, 180 / 256, 127.999, 0
+.dbcos 0, 255, 360 / 256, 127.999, 0
 
 .bank 1 slot 1
 .org $0000
