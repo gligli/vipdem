@@ -46,12 +46,11 @@ banks 4
 ; Program defines
 ;==============================================================
 
-.define FrameSampleCount 825 ; 344 cycles per PCM sample = one sample every 320 cycles
-.define PCMBufferSizeShift 11
-.define PCMBufferSize (1 << PCMBufferSizeShift)
+.define RotoLineCount 24
+.define PM7LineCount 14
 
 ;==============================================================
-; Useful macros
+; Utility macros
 ;==============================================================
 
 .macro WaitVBlank args playSmp ; c11
@@ -181,9 +180,9 @@ banks 4
     CurFrameIdx       dw
     RotoX             dw ; (8.8 fixed point)
     RotoY             dw ; (8.8 fixed point)
-    RotoVX            dw ; (8.8 fixed point)
-    RotoVY            dw ; (8.8 fixed point)
-    CurEffect         db  
+    RotoRot           dw ; (8.8 fixed point)
+    RotoScl           dw ; (8.8 fixed point)
+    CurEffect         db
 
     ; keep this last
     RAMCode           .
@@ -202,7 +201,7 @@ interrupt:
 
 init_tab: ; table must exist within this bank
     .db $00, $00, $01, $02
-    
+
 main:
     di              ; disable interrupts
     im 1            ; interrupt mode 1
@@ -220,13 +219,11 @@ main:
     ; clear RAM
 
     ld hl, $c000
-    ld b, $00
--:
-    ld (hl), b
-    inc hl
-    ld a,h
-    cp $e0
-    jr nz,-
+    ld de, $c001
+    ld bc, $2000
+    xor a
+    ld (hl), a
+    ldir
 
     ; set up VDP registers
 
@@ -338,20 +335,23 @@ p0:
     in a, (IOPortA)
     bit 5, a
     jp nz, +
-        push af
-        ld a, (CurEffect)
-        cpl
-        ld (CurEffect), a
-        pop af
+        ld hl, CurEffect
+        bit 0, (hl)
+        jp z, ++
+        res 0, (hl)
         call RotoZoomInit
+        jp +++
+    ++:
+        set 0, (hl)
+        call PseudoMode7Init
+    +++:
 +:
 
     bit 4, a
     jp z, ++
 
     ld bc, $0010
-
-    ld hl, (RotoVY)
+    ld hl, (RotoScl)
     rrca
     jp c, +
         or a
@@ -361,8 +361,9 @@ p0:
     jp c, +
         add hl, bc
 +:
-    ld (RotoVY), hl
-    ld hl, (RotoVX)
+    ld (RotoScl), hl
+    ld bc, $0004
+    ld hl, (RotoRot)
     rrca
     jp c, +
         or a
@@ -372,9 +373,9 @@ p0:
     jp c, +
         add hl, bc
 +:
-    ld (RotoVX), hl
+    ld (RotoRot), hl
     jp +++
-   
+
 ++:
     ld bc, $0200
     ld hl, (RotoY)
@@ -413,6 +414,113 @@ p1:
     call PseudoMode7MonoFB
     jp MainLoop
 
+;==============================================================
+; Utility functions
+;==============================================================
+
+; 16*8 unsigned multiplication
+; The following routine multiplies de by a and places the result in ahl
+; (which means a is the most significant byte of the product, l the least significant and h the intermediate one...)
+MultiplyUnsignedAByDE:
+    ld	c, 0
+    ld	h, c
+    ld	l, h
+
+    add a,a  ; optimised 1st iteration
+    jp nc, +
+    ld h,d
+    ld l,e
++:
+    .repeat 7
+        add hl,hl
+        rla
+        jp nc, +
+        add hl,de
+        adc a,c
+    +:
+    .endr
+
+    ret
+
+; 16*8 fixed point signed multiplication
+; input in a/de, output in hl
+FPMultiplySignedAByDE:
+    ld	c, 0
+    ld h,c
+    ld l,c
+
+    add a,a  ; optimised 1st iteration
+    jp nc, @Positive
+    neg
+    
+    .repeat 7
+        add hl,hl
+        rla
+        jp nc, +
+        add hl,de
+        adc a,c
+    +:
+    .endr
+    
+    ld l, h
+    ld h, a
+    NegateHL
+   
+    ret
+    
+@Positive:
+   
+    .repeat 7
+        add hl,hl
+        rla
+        jp nc, +
+        add hl,de
+        adc a,c
+    +:
+    .endr
+
+    ld l, h
+    ld h, a
+
+    ret
+
+; 16*16 unsigned multiplication
+; This routine performs the operation BCHL=BC*DE
+MultiplyBCByDE:
+    ld hl,0
+
+    .repeat 16
+        add hl,hl
+        rl c
+        rl b
+        jp nc, +
+        add hl,de
+        jp nc, +
+        inc bc  ; This instruction (with the jump) is like an "ADC DE,0"
+    +:
+    .endr
+
+    ret
+    
+; 512 step sinus
+; input in bc and output in a
+GetSinBC:
+    ld a, c
+    sub 128
+    ld c, a
+    /* fall through */
+
+; 512 step cosinus
+; input in bc and output in a
+GetCosBC:
+    rr b
+    ld b, >CosLUT
+    ld a, (bc)
+    ret nc
+    neg
+    
+    ret
+    
 ;==============================================================
 ; RotoZoom code
 ;==============================================================
@@ -470,7 +578,7 @@ p1:
     ld (hl), a
 
     exx
-    
+
     ; we want increments
     ld ixh, 0
     ld iyh, 0
@@ -499,19 +607,19 @@ RotoRAMCodeBakePos4:
 
     add a, a
     or (hl)
-    
+
     ex de, hl
-    
+
     add hl, bc ; add line x/y offset
     res 7, h ; texture starts at $0000
 
     add a, a
     or (hl)
-    
+
     ex de, hl
 .endm
 
-.macro RotoGetLineOffsets args fixup
+.macro RotoGetLineOffsets
     ld h, >RotoPrecalcData
     ; advance hl "line pair" items
     ld l, a
@@ -528,18 +636,16 @@ RotoRAMCodeBakePos4:
     inc l
     ; x coord
     ld d, (hl)
-.ifeq fixup 1
     ; fixup regs
     ld h, b
     ld l, c
-.endif
 .endm
 
 RotoZoomInit:
-    ld hl, $0200
-    ld (RotoVX), hl
     ld hl, $0000
-    ld (RotoVY), hl
+    ld (RotoRot), hl
+    ld hl, $0200
+    ld (RotoScl), hl
 
     ; copy code to RAM, duplicating it
     ld de, RAMCode
@@ -585,41 +691,40 @@ RotoZoomMonoFB:
     ; precaclulate increments for one line
 
     exx
+    ld de, (RotoScl) ; vy
+
+    ld bc, (RotoRot) ; vx
+    call GetCosBC
+    call FPMultiplySignedAByDE    
+    push hl
+    
+    ld bc, (RotoRot) ; vx
+    call GetSinBC
+    call FPMultiplySignedAByDE    
+    ld d, h
+    ld e, l
+    
+    pop bc
+   
+    ld ($d800), bc
+    ld ($d802), de
+   
     ld ix, (RotoX) ; x
     ld iy, (RotoY) ; y
-    ld bc, (RotoVX) ; vx
-    ld de, (RotoVY) ; vy
-    ld h, d
-    ld l, e
-    NegateHL
     exx
 
 RotoDoPrecalc:
     ld (SPSave), sp
+
     ld sp, RotoPrecalcDataEnd
-
-    ld c, 24
     exx
-    ex de, hl ; vy = - vy
-    exx
--:
-    exx
-    RotoZoomPushIncs
-    RotoZoomX 1, 1
-    RotoZoomY 1, 1
-
-    RotoZoomPushIncs
-    RotoZoomX 1, 1
-    RotoZoomY 1, 1
-    exx
-
-    dec c
-    jp nz, -
-
-    exx
-    ; hl thrashed by RotoZoomPushIncs
-    ld hl, (RotoVY) ; vy
-    ex de, hl ; vy = - vy
+    NegateDE
+    .repeat RotoLineCount * 2
+        RotoZoomPushIncs
+        RotoZoomX 2, 1
+        RotoZoomY 2, 1
+    .endr
+    NegateDE
     exx
 
     ; copy line pixels offsets into RAM code
@@ -650,7 +755,7 @@ RotoDoPrecalc:
 RotoPrecalcEnd:
 
     ld sp, (SPSave)
-    ld l, 24 ; line counter
+    ld l, RotoLineCount ; line counter
 
     ; main loop on lines pairs
 
@@ -660,8 +765,8 @@ RotoLineLoop:
     add a, a
     add a, a
     exx
-    RotoGetLineOffsets 1    
-     
+    RotoGetLineOffsets
+
     jp RAMCode
 RotoRAMCodeStart:
     .repeat 2 index x_dummy
@@ -688,19 +793,6 @@ RotoRAMCodeRet:
 ; Pseudo mode 7 code
 ;==============================================================
 
-.macro PM7PushIncs args line
-    ; x coord
-    ld a, (line >> 1) * 8
-    add a, ixh
-    ld l, a
-
-    ; y coord
-    ld a, iyh
-    ld h, a
-
-    push hl
-.endm
-
 .macro PM7GetPixel args idx
     .ifeq (idx & 1) 0
         exx
@@ -719,12 +811,39 @@ RotoRAMCodeRet:
     .else
         add hl, de ; add line x/y offset
     .endif
-    
+
     res 7, h ; texture starts at $0000
 
     add a, a
     or (hl)
 .endm
+
+.macro PM7GetLineOffsets
+    ld h, >RotoPrecalcData
+    ; advance hl "line pair" items
+    ld l, a
+    ; even line
+    ; y coord
+    ld c, (hl)
+    inc l
+    ; x coord
+    ld b, (hl)
+    inc l
+    ; odd line
+    ; y coord
+    ld e, (hl)
+    inc l
+    ; x coord
+    ld d, (hl)
+.endm
+
+PseudoMode7Init:
+    ld hl, $0000
+    ld (RotoRot), hl
+    ld hl, $0200
+    ld (RotoScl), hl
+
+    ret
 
 PseudoMode7MonoFB:
     ex de, hl
@@ -734,63 +853,61 @@ PseudoMode7MonoFB:
     exx
     ld ix, (RotoX) ; x
     ld iy, (RotoY) ; y
-    ld bc, (RotoVX) ; vx
-    ld de, (RotoVY) ; vy
-    ld hl, (RotoVY) ; -vy
+    ld bc, (RotoRot) ; vx
+    ld de, (RotoScl) ; vy
+    ld hl, (RotoScl) ; -vy
     NegateHL
     exx
 
 PM7DoPrecalc:
     ld (SPSave), sp
-    ld sp, RotoPrecalcDataEnd
+    ld sp, RotoPrecalcData + PM7LineCount * 4
 
     xor a
     exx
     ex de, hl ; vy = - vy
 
-    .repeat 48 index y_line
-        PM7PushIncs y_line
+    .repeat PM7LineCount * 2 index y_line
+        ; x coord
+        ld a, ixh
+        ld l, a
+
+        ; y coord
+        ld a, PM7LineCount * 0
+        add a, iyh
+        ld h, a
+
+        push hl
+
         RotoZoomX 1, 1
         RotoZoomY 1, 1
     .endr
 
     ; hl thrashed by PM7PushIncs
-    ld hl, (RotoVY) ; vy
+    ld hl, (RotoScl) ; vy
     ex de, hl ; vy = - vy
     exx
-    
+
     ; line increments of vx
-    
-    ld sp, RotoRAMBakeIncs + 48 ; reusing this buffer for line incs
-    ld a, 48
-    ld c, a
+
+    ld hl, (RotoScl)
+    ld sp, RotoRAMBakeIncs + PM7LineCount * 2 ; reusing this buffer for line incs
+    ld bc, PM7LineCount
 -:
-    ld a, c
-    add a, a
-    add a, a
-    ld e, a
-
-    ld d, 0
-    sla e
-    rl d
-    sla e
-    rl d
-
-    ld hl, (RotoVX)
-    add hl, de
+    add hl, bc
     push hl
-
-    dec c
-    dec c
-    jp p, -
+    inc c
+    ld a, c
+    cp PM7LineCount * 2
+    jp nz, -
 
 PM7PrecalcEnd:
 
     ld sp, (SPSave)
     exx
-    ld l, 14 ; line counter
+    ld l, PM7LineCount ; line counter
     exx
-    
+
     ld c, VDPData
 
     ; main loop on lines pairs
@@ -802,16 +919,17 @@ PM7LineLoop:
     exx
     ; get line inc
     ld a, l
+    neg
     add a, a
-    add a, <RotoRAMBakeIncs - 2
-    ld b, >RotoRAMBakeIncs
-    ld c, a
-    ld a, (bc)
+    add a, <(RotoRAMBakeIncs + PM7LineCount * 2)
+    ld d, >RotoRAMBakeIncs
+    ld e, a
+    ld a, (de)
     ld h, a
-    inc c
-    ld a, (bc)
-    ld b, a
-    ld c, h
+    inc e
+    ld a, (de)
+    ld d, a
+    ld e, h
 
     ; for line offsets
     ld a, l
@@ -819,9 +937,9 @@ PM7LineLoop:
     add a, a
     add a, a
     exx
-        
+
     RotoGetLineOffsets 0
-    
+
     .repeat 32 index x_byte
         .repeat 4 index x_bit
             PM7GetPixel x_byte * 8 + x_bit
@@ -841,10 +959,15 @@ PM7LineLoop:
     jp nz, PM7LineLoop
 
     ret
-    
+
 ;==============================================================
 ; Data
 ;==============================================================
+
+.bank 2 slot 2
+.org $3f00
+CosLUT:
+.dbcos 0, 255, 180 / 256, 127.999, 0
 
 .bank 1 slot 1
 .org $0000
@@ -853,7 +976,6 @@ PSGInitData:
 .db $9f $bf $df $ff $81 $00 $a1 $00 $c1 $00
 PSGInitDataEnd:
 
-; VDP initialisation data
 VDPInitData:
 .db $14,$80,$00,$81,$ff,$82,$41,$85,$fb,$86,$ff,$87,$00,$88,$00,$89,$ff,$8a
 VDPInitDataEnd:
