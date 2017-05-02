@@ -47,6 +47,7 @@ banks 4
 ;==============================================================
 
 .define RotoLineCount 24
+.define RotoBakeSlotCount 5
 .define PM7LineCount 14
 
 ;==============================================================
@@ -186,11 +187,10 @@ banks 4
 ;==============================================================
 
 .enum $c000 export
-    RotoPrecalcData   dsb 96 ; align 256
-    RotoPrecalcDataEnd .
-    RotoRAMBakeAlign  dsb 32
-    RotoRAMBakeIncs   dsb 128 ; align 128
+    RotoRAMBakeIncs   dsb 256 ; align 256
     RotoRAMBakeIncsEnd .
+    RotoPrecalcData   dsb RotoLineCount * 2 ; align 256
+    RotoPrecalcDataEnd .
 
     SPSave            dw
     CurFrameIdx       dw
@@ -566,19 +566,50 @@ MultiplyBCByDE:
 
     ; x coord
     ld a, ixh
-    ld (hl), a
-
-    inc l
+    ld c, %00101100 ; inc l
+    or a
+    jp z, ++
+    jp p, +
+    inc c ; inc -> dec
+    neg
++:  
+-:
+    ld (hl), c
+    inc hl
+    dec a
+    jp nz, -
+++:
+    ld ixh, a
 
     ; y coord
     ld a, iyh
-    ld (hl), a
+    ld c, %00100100 ; inc h
+    or a
+    jp z, ++
+    jp p, +
+    inc c ; inc -> dec
+    neg
++:  
+-:
+    ld (hl), c
+    inc hl
+    dec a
+    jp nz, -
+++:
+    ld iyh, a
+    
+    ; remove any leftover inc/dec
+    ld c, a ; = 0 -> nop
+    jp +
+-:
+    ld (hl), c
+    inc hl
++:    
+    ld a, (hl)
+    or a
+    jp p, -
 
     exx
-
-    ; we want increments
-    ld ixh, 0
-    ld iyh, 0
 .endm
 
 .macro RotoZoomGetPixel args idx
@@ -588,54 +619,40 @@ RotoRAMCodeBakePos0:
 .ifeq idx 1
 RotoRAMCodeBakePos1:
 .endif
-.ifeq idx 2
-RotoRAMCodeBakePos2:
-.endif
 .ifeq idx 3
 RotoRAMCodeBakePos3:
 .endif
 .ifeq idx 4
 RotoRAMCodeBakePos4:
 .endif
-    ld bc, $aa55 ; placeholder value (x/y coordinates will be copied in)
-
-    add hl, bc ; add line x/y offset
+.ifeq idx 7
+RotoRAMCodeBakePos7:
+.endif
+.ifeq idx 8
+RotoRAMCodeBakePos8:
+.endif
+    .repeat RotoBakeSlotCount
+        nop
+    .endr
+    
     res 7, h ; texture starts at $0000
 
     add a, a
     or (hl)
-
-    ex de, hl
-
-    add hl, bc ; add line x/y offset
-    res 7, h ; texture starts at $0000
-
-    add a, a
-    or (hl)
-
-    ex de, hl
 .endm
 
-.macro RotoGetLineOffsets
+.macro RotoGetLineOffset
     ld h, >RotoPrecalcData
     ; advance hl "line pair" items
     ld l, a
     ; even line
     ; y coord
-    ld c, (hl)
-    inc l
-    ; x coord
-    ld b, (hl)
-    inc l
-    ; odd line
-    ; y coord
     ld e, (hl)
     inc l
     ; x coord
     ld d, (hl)
-    ; fixup regs
-    ld h, b
-    ld l, c
+    ; output in hl
+    ex de, hl
 .endm
 
 RotoZoomInit:
@@ -656,25 +673,25 @@ RotoZoomInit:
 
     ; get offset increments in RAM code where data will be copied in
     ld hl, RotoRAMBakeIncs
-    ld d, RotoRAMCodeBakePos0 - RotoRAMCodeStart + 1
-    ld e, 128
+    ld d, RotoRAMCodeBakePos0 - RotoRAMCodeStart
+    ld e, 0
 -:
     ld (hl), d
     inc l
 
     ld a, e
-    and $03
+    and $07
     cp 3
     jp nz, +
-    ld d, RotoRAMCodeBakePos4 - RotoRAMCodeBakePos3 - 1
+    ld d, RotoRAMCodeBakePos4 - RotoRAMCodeBakePos3 - RotoBakeSlotCount
     jp ++
 +:
-    cp 1
+    cp 7
     jp nz, +
-    ld d, RotoRAMCodeBakePos2 - RotoRAMCodeBakePos1 - 1
+    ld d, RotoRAMCodeBakePos8 - RotoRAMCodeBakePos7 - RotoBakeSlotCount
     jp ++
 +:
-    ld d, RotoRAMCodeBakePos1 - RotoRAMCodeBakePos0 - 1
+    ld d, RotoRAMCodeBakePos1 - RotoRAMCodeBakePos0 - RotoBakeSlotCount
 ++:
 
     inc e
@@ -703,28 +720,27 @@ RotoZoomMonoFB:
     
     pop bc
    
-    ld ($d800), bc
-    ld ($d802), de
+    ; ld ($d800), bc
+    ; ld ($d802), de
    
     ld ix, (RotoX) ; x
     ld iy, (RotoY) ; y
     exx
 
-RotoDoPrecalc:
     ld (SPSave), sp
 
     ld sp, RotoPrecalcDataEnd
     exx
     NegateDE
-    .repeat RotoLineCount * 2
+    .repeat RotoLineCount
         RotoZoomPushIncs
-        RotoZoomX 2, 1
-        RotoZoomY 2, 1
+        RotoZoomX 4, 1
+        RotoZoomY 4, 1
     .endr
     NegateDE
     exx
 
-    ; copy line pixels offsets into RAM code
+    ; copy line pixels increments into RAM code
 
     ld sp, (SPSave)
 
@@ -735,24 +751,50 @@ RotoDoPrecalc:
     ld iy, (RotoY) ; y
 
     ld b, 0
--:
+    
     exx
-    .repeat 16
+    ld h, d
+    ld l, e
+    NegateHL
+    exx
+    
+RotoPrecalcIncs:
+    exx
+    .repeat 1
         RotoZoomX 1, 0
         RotoZoomY 1, 0
-        RotoZoomBakeIncs 1
+        RotoZoomBakeIncs
+
+        ex de, hl ; NegateDE
+        RotoZoomX 2, 1
+        ex de, hl ; NegateDE
+        RotoZoomY 2, 1
+        RotoZoomBakeIncs
+
+        RotoZoomX 1, 0
+        RotoZoomY 1, 0
+        RotoZoomBakeIncs
+        
+        RotoZoomX 2, 1
+        NegateBC
+        RotoZoomY 2, 1
+        NegateBC
+        RotoZoomBakeIncs
     .endr
     exx
 
     xor a
     cp e
-    jp nz, -
-
+    jp nz, RotoPrecalcIncs
+    
 ;    ret
 RotoPrecalcEnd:
 
     ld sp, (SPSave)
     ld l, RotoLineCount ; line counter
+    exx
+    ld c, VDPData
+    exx
 
     ; main loop on lines pairs
 
@@ -760,19 +802,19 @@ RotoLineLoop:
     ld a, l
     dec a
     add a, a
-    add a, a
     exx
-    RotoGetLineOffsets
+    RotoGetLineOffset
 
     jp RAMCode
 RotoRAMCodeStart:
     .repeat 2 index x_dummy
-        RotoZoomGetPixel x_dummy * 4 + 0
-        RotoZoomGetPixel x_dummy * 4 + 1
-        ld c, VDPData
+        .repeat 4 index x_bit
+            RotoZoomGetPixel x_dummy * 8 + x_bit
+        .endr
         in (c)
-        RotoZoomGetPixel x_dummy * 4 + 2
-        RotoZoomGetPixel x_dummy * 4 + 3
+        .repeat 4 index x_bit
+            RotoZoomGetPixel x_dummy * 8 + x_bit + 4
+        .endr
         out (VDPData), a
     .endr
 RotoRAMCodeEnd:
@@ -935,7 +977,7 @@ PM7LineLoop:
     add a, a
     exx
 
-    RotoGetLineOffsets 0
+    PM7GetLineOffsets
 
     .repeat 32 index x_byte
         .repeat 4 index x_bit
