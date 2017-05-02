@@ -31,8 +31,8 @@ procedure TMonoFBGen.DoRun;
 const
   cPixelsPositions: array[0..1, 0..3] of Byte =
   (
-    (0, 3, 4, 7),
-    (1, 2, 5, 6)
+    (0, 2, 4, 6),
+    (1, 3, 5, 7)
   );
 var
   tile, y, x, idx: Integer;
