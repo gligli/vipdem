@@ -48,7 +48,7 @@ banks 4
 
 .define RotoColumnCount 24
 .define RotoLineCount 24
-.define PM7LineCount 12
+.define PM7LineCount 20
 .define PM7Fov 0.25
 
 ;==============================================================
@@ -181,18 +181,24 @@ banks 4
     ld a, (bc)
 .endm
     
+.macro HLFakeCall args 1
+    ld hl, +
+    jp \1
++:
+.endm
 
+.macro HLFakeRet
+    jp (hl)
+.endm
 
 ;==============================================================
 ; RAM variables
 ;==============================================================
 
 .enum $c000 export
-    RotoPrecalcData   dsb RotoLineCount * 4 ; align 256
-    RotoPrecalcDataEnd .
-    RotoRAMBakeAlign  dsb 128 - RotoLineCount * 4
-    RotoRAMBakeIncs   dsb 128 ; align 128
+    RotoRAMBakeIncs   dsb 256 ; align 128
     RotoRAMBakeIncsEnd .
+    RotoPrecalcData   dsb 256 ; align 256
 
     SPSave            dw
     CurFrameIdx       dw
@@ -202,8 +208,9 @@ banks 4
     RotoY             dw ; (8.8 fixed point)
     RotoVX            dw ; (8.8 fixed point)
     RotoVY            dw ; (8.8 fixed point)
+    PM7CurLine        db
     CurEffect         db
-
+    
     ; keep this last
     RAMCode           .
 .ende
@@ -279,7 +286,7 @@ main:
     ld a, 1
     ld (CurEffect), a
 
-    ; init RotoZoom
+    ; init RotoZoom / PseudoMode7
     call PseudoMode7Init
 
     ; load tiles (Monochrome framebuffer emulation)
@@ -728,7 +735,7 @@ RotoZoomMonoFB:
 RotoDoPrecalc:
     ld (SPSave), sp
 
-    ld sp, RotoPrecalcDataEnd
+    ld sp, RotoPrecalcData + RotoLineCount * 4
     exx
     NegateDE
     .repeat RotoLineCount * 2
@@ -817,18 +824,53 @@ RotoRAMCodeRet:
     ; advance hl "line pair" items
     ld l, a
     ; even line
-    ; y coord
-    ld c, (hl)
-    inc l
     ; x coord
-    ld b, (hl)
-    inc l
-    ; odd line
-    ; y coord
     ld e, (hl)
     inc l
-    ; x coord
+    ; y coord
     ld d, (hl)
+    inc l
+    ; y inc
+    ld a, (hl)
+    inc l
+    exx
+    ld e, a
+    exx
+    ld a, (hl)
+    inc l
+    exx
+    ld d, a
+    exx
+    ; x inc
+    ld a, (hl)
+    inc l
+    exx
+    ld c, a
+    exx
+    ld a, (hl)
+    inc l
+    exx
+    ld b, a
+    exx
+    ; odd line
+    ; x coord
+    ld c, (hl)
+    inc l
+    ; y coord
+    ld b, (hl)
+
+    ; x inc
+    ; ld a, (hl)
+    ; inc l
+    ; exx
+    ; ld l, a
+    ; exx
+    ; ld a, (hl)
+    ; inc l
+    ; exx
+    ; ld h, a
+    ; exx
+    
 .endm
 
 .macro PM7GetPixel args idx
@@ -861,69 +903,77 @@ PseudoMode7Init:
     ld (RotoRot), hl
     ld hl, $0400
     ld (RotoScl), hl
+    
+PM7ComputePerLineIncs:
+    exx
+    ld de, (RotoScl)
+    call MultiplyUnsignedAByDE
+    ld d, a
+    ld e, h
+   
+    RotoZoomFromRotScale 0, 0
 
+    ld h, d
+    ld l, e
+    NegateDE
+    exx
+
+    ; x coord
+    ld a, ixh
+    ld e, a
+
+    ; y coord
+    ld a, iyh
+    add a, a
+    ld d, a
+
+    ld (hl), e
+    inc l
+    ld (hl), d
+    inc l
+    
+    exx
+    RotoZoomX 2, 1
+    RotoZoomY 2, 1
+
+    add hl, hl
+
+    push bc
+    push hl
+    exx
+
+    .repeat 2
+        pop de
+        ld (hl), e
+        inc l
+        ld (hl), d
+        inc l
+    .endr
+    
     ret
 
 PseudoMode7MonoFB:
-    ex de, hl
 
     ; precaclulate increments for one line
 
-    exx
     ld ix, (RotoX) ; x
     ld iy, (RotoY) ; y
-    exx
 
 PM7DoPrecalc:
-    ld (SPSave), sp
-    ld sp, RotoPrecalcData + PM7LineCount * 8
+    ld hl, RotoPrecalcData
 
-    xor a
-    exx
-    .repeat PM7LineCount index y_line
-        ld de, (RotoScl)
-        ld a, 255 / (1 + (y_line / PM7LineCount) * PM7Fov)
-        call MultiplyUnsignedAByDE
-        ld d, a
-        ld e, h
-       
-        RotoZoomFromRotScale 0, 0
-
-        ld h, d
-        ld l, e
-        NegateDE
-        .repeat 2
-            exx
-            ; x coord
-            ld a, ixh
-            ld l, a
-
-            ; y coord
-            ld a, iyh
-            add a, a
-            ld h, a
-
-            push hl
-            exx
-
-            RotoZoomX 2, 1
-            RotoZoomY 2, 1
-        .endr
-        
-        add hl, hl
-        push hl
-        push bc
+    .repeat PM7LineCount * 2 index y_line
+        ld a, 255 / (1 + (y_line / PM7LineCount * 2) * PM7Fov)
+        call PM7ComputePerLineIncs
     .endr
-    exx
 
 PM7PrecalcEnd:
 
-    ld sp, (SPSave)
     exx
-    ld l, PM7LineCount ; line counter
+    ld a, PM7LineCount
+    ld hl, PM7CurLine
+    ld (hl), a
     exx
-
-    ld c, VDPData
 
     ; main loop on lines pairs
 
@@ -932,18 +982,16 @@ PM7LineLoop:
     ld iy, (RotoY) ; y
 
     exx
-    ; for line incs
-    ld a, l
-    dec a
+    ; for line incs (a * 12)
+    ld a, PM7LineCount
+    sub (hl)
+    ld l, a
+    add a, a
+    add a, l
     add a, a
     add a, a
-    add a, a
-    push hl
-    PM7GetLineIncs
-    pop hl
     exx
 
-    add a, 4
     PM7GetLineIncs
     
     .repeat 32 index x_byte
@@ -960,7 +1008,8 @@ PM7LineLoop:
     .endr
 
     exx
-    dec l
+    ld hl, PM7CurLine
+    dec (hl)
     exx
     jp nz, PM7LineLoop
 
