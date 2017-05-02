@@ -48,8 +48,8 @@ banks 4
 
 .define RotoColumnCount 24
 .define RotoLineCount 24
-.define PM7LineCount 20
-.define PM7Fov 0.25
+.define PM7LineCount 12
+.define PM7Fov 0.5
 
 ;==============================================================
 ; Utility macros
@@ -283,11 +283,11 @@ main:
     ld (CurFrameIdx), a
     ld (CurFrameIdx + $01), a
 
-    ld a, 1
+    ld a, 0
     ld (CurEffect), a
 
     ; init RotoZoom / PseudoMode7
-    call PseudoMode7Init
+    call RotoZoomInit
 
     ; load tiles (Monochrome framebuffer emulation)
     SetVDPAddress $0000 | VRAMWrite
@@ -721,8 +721,6 @@ RotoZoomInit:
     ret
 
 RotoZoomMonoFB:
-    ex de, hl
-
     ; precaclulate increments for one line
 
     exx
@@ -759,7 +757,7 @@ RotoDoPrecalc:
     ld b, 0
 -:
     exx
-    .repeat 16
+    .repeat RotoColumnCount / 2
         RotoZoomX 1, 0
         RotoZoomY 1, 0
         RotoZoomBakeIncs 1
@@ -791,8 +789,9 @@ RotoRAMCodeStart:
     .repeat 2 index x_dummy
         RotoZoomGetPixel x_dummy * 4 + 0
         RotoZoomGetPixel x_dummy * 4 + 1
-        ld c, VDPData
-        in (c)
+        ex af, af'
+        in a, (VDPData)
+        ex af, af'
         RotoZoomGetPixel x_dummy * 4 + 2
         RotoZoomGetPixel x_dummy * 4 + 3
         out (VDPData), a
@@ -858,18 +857,19 @@ RotoRAMCodeRet:
     inc l
     ; y coord
     ld b, (hl)
+    inc l
 
     ; x inc
-    ; ld a, (hl)
-    ; inc l
-    ; exx
-    ; ld l, a
-    ; exx
-    ; ld a, (hl)
-    ; inc l
-    ; exx
-    ; ld h, a
-    ; exx
+    ld a, (hl)
+    inc l
+    exx
+    ld l, a
+    exx
+    ld a, (hl)
+    inc l
+    exx
+    ld h, a
+    exx
     
 .endm
 
@@ -879,6 +879,12 @@ RotoRAMCodeRet:
         RotoZoomX 1, 0
         RotoZoomY 1, 0
         exx
+    .else
+        ; exx
+        ; ex de, hl
+        ; add iy, de
+        ; ex de, hl
+        ; exx
     .endif
 
     ex de, hl
