@@ -658,7 +658,7 @@ RotoRAMCodeBakePos8:
 RotoZoomInit:
     ld hl, $0000
     ld (RotoRot), hl
-    ld hl, $0200
+    ld hl, $0400
     ld (RotoScl), hl
 
     ; copy code to RAM, duplicating it
@@ -734,8 +734,8 @@ RotoZoomMonoFB:
     NegateDE
     .repeat RotoLineCount
         RotoZoomPushIncs
-        RotoZoomX 4, 1
-        RotoZoomY 4, 1
+        RotoZoomX 2, 1
+        RotoZoomY 2, 1
     .endr
     NegateDE
     exx
@@ -766,18 +766,18 @@ RotoPrecalcIncs:
         RotoZoomBakeIncs
 
         ex de, hl ; NegateDE
-        RotoZoomX 2, 1
+        RotoZoomX 1, 1
         ex de, hl ; NegateDE
-        RotoZoomY 2, 1
+        RotoZoomY 1, 1
         RotoZoomBakeIncs
 
         RotoZoomX 1, 0
         RotoZoomY 1, 0
         RotoZoomBakeIncs
         
-        RotoZoomX 2, 1
+        RotoZoomX 1, 1
         NegateBC
-        RotoZoomY 2, 1
+        RotoZoomY 1, 1
         NegateBC
         RotoZoomBakeIncs
     .endr
