@@ -48,7 +48,7 @@ banks 4
 
 .define RotoColumnCount 24
 .define RotoLineCount 24
-.define PM7LineCount 14
+.define PM7LineCount 13
 
 ;==============================================================
 ; Utility macros
@@ -195,10 +195,12 @@ banks 4
 
     SPSave            dw
     CurFrameIdx       dw
-    RotoX             dw ; (8.8 fixed point)
-    RotoY             dw ; (8.8 fixed point)
     RotoRot           dw ; (8.8 fixed point)
     RotoScl           dw ; (8.8 fixed point)
+    RotoX             dw ; (8.8 fixed point)
+    RotoY             dw ; (8.8 fixed point)
+    RotoVX            dw ; (8.8 fixed point)
+    RotoVY            dw ; (8.8 fixed point)
     CurEffect         db
 
     ; keep this last
@@ -523,6 +525,28 @@ MultiplyBCByDE:
 ; RotoZoom code
 ;==============================================================
 
+.Macro RotoZoomFromRotScale args toV
+    ld de, (RotoScl) ; vy
+
+    ld bc, (RotoRot) ; vx
+    GetCosBC
+    call FPMultiplySignedAByDE    
+    push hl
+    
+    ld bc, (RotoRot) ; vx
+    GetSinBC
+    call FPMultiplySignedAByDE    
+    ld d, h
+    ld e, l
+    
+    pop bc
+
+    .ifeq toV 1
+        ld (RotoVX), bc
+        ld (RotoVY), de
+    .endif
+.endm
+
 .macro RotoZoomX args times, other
     ; x offset
     .repeat times
@@ -692,23 +716,7 @@ RotoZoomMonoFB:
     ; precaclulate increments for one line
 
     exx
-    ld de, (RotoScl) ; vy
-
-    ld bc, (RotoRot) ; vx
-    GetCosBC
-    call FPMultiplySignedAByDE    
-    push hl
-    
-    ld bc, (RotoRot) ; vx
-    GetSinBC
-    call FPMultiplySignedAByDE    
-    ld d, h
-    ld e, l
-    
-    pop bc
-   
-    ld ($d800), bc
-    ld ($d802), de
+    RotoZoomFromRotScale 0
    
     ld ix, (RotoX) ; x
     ld iy, (RotoY) ; y
@@ -820,7 +828,7 @@ RotoRAMCodeRet:
         add hl, de ; add line x/y offset
     .endif
 
-    res 7, h ; texture starts at $0000
+    srl h ; texture starts at $0000
 
     add a, a
     or (hl)
@@ -846,9 +854,9 @@ RotoRAMCodeRet:
 .endm
 
 PseudoMode7Init:
-    ld hl, $0000
+    ld hl, $0140
     ld (RotoRot), hl
-    ld hl, $0200
+    ld hl, $0400
     ld (RotoScl), hl
 
     ret
@@ -861,9 +869,11 @@ PseudoMode7MonoFB:
     exx
     ld ix, (RotoX) ; x
     ld iy, (RotoY) ; y
-    ld bc, (RotoRot) ; vx
-    ld de, (RotoScl) ; vy
-    ld hl, (RotoScl) ; -vy
+
+    RotoZoomFromRotScale 1
+
+    ld h, d
+    ld l, e
     NegateHL
     exx
 
@@ -881,8 +891,8 @@ PM7DoPrecalc:
         ld l, a
 
         ; y coord
-        ld a, PM7LineCount * 0
-        add a, iyh
+        ld a, iyh
+        add a, a
         ld h, a
 
         push hl
@@ -892,22 +902,9 @@ PM7DoPrecalc:
     .endr
 
     ; hl thrashed by PM7PushIncs
-    ld hl, (RotoScl) ; vy
+    ld hl, (RotoVY) ; vy
     ex de, hl ; vy = - vy
     exx
-
-    ; line increments of vx
-
-    ld hl, (RotoScl)
-    ld sp, RotoRAMBakeIncs + PM7LineCount * 2 ; reusing this buffer for line incs
-    ld bc, PM7LineCount
--:
-    add hl, bc
-    push hl
-    inc c
-    ld a, c
-    cp PM7LineCount * 2
-    jp nz, -
 
 PM7PrecalcEnd:
 
@@ -925,20 +922,6 @@ PM7LineLoop:
     ld iy, (RotoY) ; y
 
     exx
-    ; get line inc
-    ld a, l
-    neg
-    add a, a
-    add a, <(RotoRAMBakeIncs + PM7LineCount * 2)
-    ld d, >RotoRAMBakeIncs
-    ld e, a
-    ld a, (de)
-    ld h, a
-    inc e
-    ld a, (de)
-    ld d, a
-    ld e, h
-
     ; for line offsets
     ld a, l
     dec a
@@ -946,7 +929,7 @@ PM7LineLoop:
     add a, a
     exx
 
-    RotoGetLineOffsets 0
+    PM7GetLineOffsets
 
     .repeat 32 index x_byte
         .repeat 4 index x_bit
