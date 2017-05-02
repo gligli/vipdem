@@ -603,7 +603,7 @@ MultiplyBCByDE:
     ld a, ixh
     ld (hl), a
 
-    inc l
+    inc hl
 
     ; y coord
     ld a, iyh
