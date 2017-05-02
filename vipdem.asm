@@ -46,6 +46,7 @@ banks 4
 ; Program defines
 ;==============================================================
 
+.define RotoColumnCount 24
 .define RotoLineCount 24
 .define RotoBakeSlotCount 5
 .define PM7LineCount 14
@@ -677,7 +678,7 @@ RotoZoomInit:
 
     ; copy code to RAM, duplicating it
     ld de, RAMCode
-    .repeat 16
+    .repeat RotoColumnCount / 2
         ld hl, RotoRAMCodeStart
         ld bc, RotoRAMCodeEnd - RotoRAMCodeStart
         ldir
@@ -686,7 +687,7 @@ RotoZoomInit:
     ldir
 
     ; get offset increments in RAM code where data will be copied in
-    ld hl, RotoRAMBakeIncs
+    ld hl, RotoRAMBakeIncsEnd - 8 * RotoColumnCount
     ld d, RotoRAMCodeBakePos0 - RotoRAMCodeStart
     ld e, 0
 -:
@@ -758,7 +759,7 @@ RotoZoomMonoFB:
 
     ld sp, (SPSave)
 
-    ld de, RotoRAMBakeIncs
+    ld de, RotoRAMBakeIncsEnd - 8 * RotoColumnCount
     ld hl, RAMCode
 
     ld ix, (RotoX) ; x
@@ -835,8 +836,14 @@ RotoRAMCodeEnd:
     jp RotoRAMCodeRet
 RotoRAMCodeRet:
 
-    exx
+    .repeat (32 - RotoColumnCount) * 2
+        nop
+        inc iy
+        in (c)
+    .endr
 
+    exx
+    
     dec l
     jp nz, RotoLineLoop
 
