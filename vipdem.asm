@@ -167,6 +167,24 @@ banks 4
     ld b,a
 .endm
 
+.macro NegateIX
+    xor a
+    sub ixl
+    ld ixl,a
+    sbc a,a
+    sub ixh
+    ld ixh,a
+.endm
+
+.macro NegateIY
+    xor a
+    sub iyl
+    ld iyl,a
+    sbc a,a
+    sub iyh
+    ld iyh,a
+.endm
+
 ; 256 step cosinus
 ; input in bc and output in a
 .macro GetCosBC
@@ -283,11 +301,11 @@ main:
     ld (CurFrameIdx), a
     ld (CurFrameIdx + $01), a
 
-    ld a, 0
+    ld a, 1
     ld (CurEffect), a
 
     ; init RotoZoom / PseudoMode7
-    call RotoZoomInit
+    call PseudoMode7Init
 
     ; load tiles (Monochrome framebuffer emulation)
     SetVDPAddress $0000 | VRAMWrite
@@ -367,11 +385,11 @@ p0:
         jp z, ++
         res 0, (hl)
         call RotoZoomInit
-        jp +++
+        jp MainLoop
     ++:
         set 0, (hl)
         call PseudoMode7Init
-    +++:
+        jp MainLoop
 +:
 
     bit 4, a
@@ -682,6 +700,11 @@ RotoZoomInit:
     ld hl, $02b0
     ld (RotoScl), hl
 
+    ld a, $00
+    out (VDPControl), a
+    ld a, $88
+    out (VDPControl), a
+
     ; copy code to RAM, duplicating it
     ld de, RAMCode
     .repeat RotoColumnCount / 2
@@ -824,10 +847,10 @@ RotoRAMCodeRet:
     ld l, a
     ; even line
     ; x coord
-    ld e, (hl)
+    ld c, (hl)
     inc l
     ; y coord
-    ld d, (hl)
+    ld b, (hl)
     inc l
     ; y inc
     ld a, (hl)
@@ -853,10 +876,10 @@ RotoRAMCodeRet:
     exx
     ; odd line
     ; x coord
-    ld c, (hl)
+    ld e, (hl)
     inc l
     ; y coord
-    ld b, (hl)
+    ld d, (hl)
     inc l
 
     ; x inc
@@ -910,6 +933,11 @@ PseudoMode7Init:
     ld hl, $0400
     ld (RotoScl), hl
     
+    ld a, $80
+    out (VDPControl), a
+    ld a, $88
+    out (VDPControl), a
+    
 PM7ComputePerLineIncs:
     exx
     ld de, (RotoScl)
@@ -955,7 +983,7 @@ PM7ComputePerLineIncs:
         ld (hl), d
         inc l
     .endr
-    
+
     ret
 
 PseudoMode7MonoFB:
@@ -969,7 +997,7 @@ PM7DoPrecalc:
     ld hl, RotoPrecalcData
 
     .repeat PM7LineCount * 2 index y_line
-        ld a, 255 / (1 + (y_line / PM7LineCount * 2) * PM7Fov)
+        ld a, 255; / (1 + (y_line / PM7LineCount * 2) * PM7Fov)
         call PM7ComputePerLineIncs
     .endr
 
@@ -984,13 +1012,40 @@ PM7PrecalcEnd:
     ; main loop on lines pairs
 
 PM7LineLoop:
-    ld ix, (RotoX) ; x
-    ld iy, (RotoY) ; y
-
+    ld ix, 0 ; x
+    ld iy, 0 ; y
+    
     exx
+    ld l, (hl)
+    ld h, 0
+
+    ; VRAM pointer position
+    push hl
+    dec l
+    ;line index to vram offset
+    add hl, hl
+    add hl, hl
+    add hl, hl
+    add hl, hl
+    add hl, hl
+    add hl, hl
+    dec hl
+    ld a, l
+    out (VDPControl), a
+    
+    ld a, (CurFrameIdx)
+    rrca    
+    ld a, h
+    jr nc, +
+    add a, $08
++:    
+    add a, >VRAMWrite + $36 - (PM7LineCount >> 2)
+    out (VDPControl), a
+    pop hl
+    
     ; for line incs (a * 12)
     ld a, PM7LineCount
-    sub (hl)
+    sub l
     ld l, a
     add a, a
     add a, l
@@ -1000,6 +1055,8 @@ PM7LineLoop:
 
     PM7GetLineIncs
     
+    
+
     .repeat 32 index x_byte
         .repeat 4 index x_bit
             PM7GetPixel x_byte * 8 + x_bit
@@ -1011,8 +1068,13 @@ PM7LineLoop:
             PM7GetPixel x_byte * 8 + x_bit + 4
         .endr
         out (VDPData), a
+        
+        .ifeq x_byte 15
+            NegateIX
+            NegateIY
+        .endif
     .endr
-
+    
     exx
     ld hl, PM7CurLine
     dec (hl)
