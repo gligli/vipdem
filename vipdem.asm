@@ -563,6 +563,8 @@ MultiplyBCByDE:
     inc e
     ld c, a
     add hl, bc
+    
+    ld b, RotoBakeSlotCount + 1
 
     ; x coord
     ld a, ixh
@@ -573,6 +575,7 @@ MultiplyBCByDE:
 -:
     ld (hl), c
     inc hl
+    dec b
     inc a
     jp nz, -
     jp ++
@@ -581,10 +584,10 @@ MultiplyBCByDE:
 -:
     ld (hl), c
     inc hl
+    dec b
     dec a
     jp nz, -
 ++:
-    ld ixh, a
 
     ; y coord
     ld a, iyh
@@ -595,6 +598,7 @@ MultiplyBCByDE:
 -:
     ld (hl), c
     inc hl
+    dec b
     inc a
     jp nz, -
     jp ++
@@ -603,19 +607,21 @@ MultiplyBCByDE:
 -:
     ld (hl), c
     inc hl
+    dec b
     dec a
     jp nz, -
-++:
-    ld iyh, a
-    
+
     ; remove any leftover inc/dec
-    jp +
+    jp ++
 -:
     ld (hl), a
     inc hl
-+:    
-    bit 7, (hl)
-    jp z, -
+++:
+    dec b
+    jp nz, -
+
+    ld ixh, a
+    ld iyh, a
 
     exx
 .endm
