@@ -46,6 +46,7 @@ banks 4
 ; Program defines
 ;==============================================================
 
+.define RotoColumnCount 24
 .define RotoLineCount 24
 .define PM7LineCount 14
 
@@ -186,9 +187,9 @@ banks 4
 ;==============================================================
 
 .enum $c000 export
-    RotoPrecalcData   dsb 96 ; align 256
+    RotoPrecalcData   dsb RotoLineCount * 4 ; align 256
     RotoPrecalcDataEnd .
-    RotoRAMBakeAlign  dsb 32
+    RotoRAMBakeAlign  dsb 128 - RotoLineCount * 4
     RotoRAMBakeIncs   dsb 128 ; align 128
     RotoRAMBakeIncsEnd .
 
@@ -378,7 +379,7 @@ p0:
         add hl, bc
 +:
     ld (RotoScl), hl
-    ld bc, $0002
+    ld bc, $0001
     ld hl, (RotoRot)
     rrca
     jp c, +
@@ -572,6 +573,7 @@ MultiplyBCByDE:
 
     ; y coord
     ld a, iyh
+    add a, a
     ld (hl), a
 
     exx
@@ -599,16 +601,18 @@ RotoRAMCodeBakePos4:
 .endif
     ld bc, $aa55 ; placeholder value (x/y coordinates will be copied in)
 
+    sla h
     add hl, bc ; add line x/y offset
-    res 7, h ; texture starts at $0000
+    srl h ; texture starts at $0000
 
     add a, a
     or (hl)
 
     ex de, hl
 
+    sla h
     add hl, bc ; add line x/y offset
-    res 7, h ; texture starts at $0000
+    srl h ; texture starts at $0000
 
     add a, a
     or (hl)
@@ -641,12 +645,12 @@ RotoRAMCodeBakePos4:
 RotoZoomInit:
     ld hl, $0000
     ld (RotoRot), hl
-    ld hl, $0200
+    ld hl, $02b0
     ld (RotoScl), hl
 
     ; copy code to RAM, duplicating it
     ld de, RAMCode
-    .repeat 16
+    .repeat RotoColumnCount / 2
         ld hl, RotoRAMCodeStart
         ld bc, RotoRAMCodeEnd - RotoRAMCodeStart
         ldir
@@ -655,9 +659,9 @@ RotoZoomInit:
     ldir
 
     ; get offset increments in RAM code where data will be copied in
-    ld hl, RotoRAMBakeIncs
+    ld hl, RotoRAMBakeIncsEnd - 4 * RotoColumnCount
     ld d, RotoRAMCodeBakePos0 - RotoRAMCodeStart + 1
-    ld e, 128
+    ld e, 256 - 4 * RotoColumnCount
 -:
     ld (hl), d
     inc l
@@ -728,7 +732,7 @@ RotoDoPrecalc:
 
     ld sp, (SPSave)
 
-    ld de, RotoRAMBakeIncs
+    ld de, RotoRAMBakeIncsEnd - 4 * RotoColumnCount
     ld hl, RAMCode
 
     ld ix, (RotoX) ; x
@@ -779,8 +783,15 @@ RotoRAMCodeEnd:
     jp RotoRAMCodeRet
 RotoRAMCodeRet:
 
-    exx
+    ld c, VDPData
+    .repeat (32 - RotoColumnCount) * 2
+        nop
+        inc iy
+        in (c)
+    .endr
 
+    exx
+    
     dec l
     jp nz, RotoLineLoop
 
