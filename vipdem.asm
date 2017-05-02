@@ -566,13 +566,18 @@ MultiplyBCByDE:
 
     ; x coord
     ld a, ixh
-    ld c, %00101100 ; inc l
     or a
-    jp z, ++
+    jr z, ++
     jp p, +
-    inc c ; inc -> dec
-    neg
+    ld c, %00101101 ; dec l
+-:
+    ld (hl), c
+    inc hl
+    inc a
+    jp nz, -
+    jp ++
 +:  
+    ld c, %00101100 ; inc l
 -:
     ld (hl), c
     inc hl
@@ -583,13 +588,18 @@ MultiplyBCByDE:
 
     ; y coord
     ld a, iyh
-    ld c, %00100100 ; inc h
     or a
-    jp z, ++
+    jr z, ++
     jp p, +
-    inc c ; inc -> dec
-    neg
+    ld c, %00100101 ; dec h
+-:
+    ld (hl), c
+    inc hl
+    inc a
+    jp nz, -
+    jp ++
 +:  
+    ld c, %00100100 ; inc h
 -:
     ld (hl), c
     inc hl
@@ -599,15 +609,13 @@ MultiplyBCByDE:
     ld iyh, a
     
     ; remove any leftover inc/dec
-    ld c, a ; = 0 -> nop
     jp +
 -:
-    ld (hl), c
+    ld (hl), a
     inc hl
 +:    
-    ld a, (hl)
-    or a
-    jp p, -
+    bit 7, (hl)
+    jp z, -
 
     exx
 .endm
