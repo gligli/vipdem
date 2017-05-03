@@ -59,7 +59,7 @@ banks 4
 .define VBCount 8
 .define VBOriginX HalfWidth
 .define VBOriginY HalfHeight
-.define VBOriginZ 32
+.define VBOriginZ 96
 
 ;==============================================================
 ; Utility macros
@@ -979,15 +979,18 @@ VBLoop:
     ; project & build SAT
 
     ld h, >InvLUT
-    ld e, (hl) ; 1 / z
+    ld d, (hl) ; 1 / z
     inc h
-    ld d, (hl)
+    ld e, (hl)
     
     ld a, c
     call FPMultiplySignedAByDE
-    ld a, b
+    add hl, hl
+
+    ld a, b ; py
     ld b, h ; px
     call FPMultiplySignedAByDE
+    add hl, hl
 
     ; add x / y 2d origin
     
@@ -1030,7 +1033,8 @@ VBLoop:
     dec l
 
     ; sat index (z)
-    ld a, e
+    ld a, d
+    rrca
     rrca
     ld d, $3c
     and d
@@ -1659,14 +1663,14 @@ InvLUT:
     .ifeq x 0
         .db 0
     .else
-        .db <(65535 / x)
+        .db <(32767 / x)
     .endif
 .endr
 .repeat 256 index x
     .ifeq x 0
         .db 0
     .else
-        .db >(65535 / x)
+        .db >(32767 / x)
     .endif
 .endr
 SinLUT:
