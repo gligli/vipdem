@@ -209,6 +209,30 @@ banks 4
     jp (hl)
 .endm
 
+.macro RotoZoomFromRotScale args toV, readScl
+    .ifeq readScl 1
+        ld de, (RotoScl) ; vy
+    .endif
+
+    ld bc, (RotoRot) ; vx
+    GetCosBC
+    call FPMultiplySignedAByDE    
+    push hl
+    
+    ld bc, (RotoRot) ; vx
+    GetSinBC
+    call FPMultiplySignedAByDE    
+    ld d, h
+    ld e, l
+    
+    pop bc
+
+    .ifeq toV 1
+        ld (RotoVX), bc
+        ld (RotoVY), de
+    .endif
+.endm
+
 ;==============================================================
 ; RAM variables
 ;==============================================================
@@ -393,9 +417,22 @@ p0:
 +:
 
     bit 4, a
-    jp z, ++
+    jp nz, +
+    push af
+    RotoZoomFromRotScale 0, 1
+    pop af
+    ld hl, (RotoX)
+    or a
+    sbc hl, de
+    sbc hl, de
+    ld (RotoX), hl
+    ld hl, (RotoY)
+    add hl, bc
+    add hl, bc
+    ld (RotoY), hl
++:    
 
-    ld bc, $0010
+    ld bc, $0020
     ld hl, (RotoScl)
     rrca
     jp c, +
@@ -407,7 +444,7 @@ p0:
         add hl, bc
 +:
     ld (RotoScl), hl
-    ld bc, $0001
+    ld bc, $0002
     ld hl, (RotoRot)
     rrca
     jp c, +
@@ -419,34 +456,6 @@ p0:
         add hl, bc
 +:
     ld (RotoRot), hl
-    jp +++
-
-++:
-    ld bc, $0200
-    ld hl, (RotoY)
-    rrca
-    jp c, +
-        or a
-        sbc hl, bc
-+:
-    rrca
-    jp c, +
-        add hl, bc
-+:
-    ld (RotoY), hl
-    ld hl, (RotoX)
-    rrca
-    jp c, +
-        or a
-        sbc hl, bc
-+:
-    rrca
-    jp c, +
-        add hl, bc
-+:
-    ld (RotoX), hl
-
-+++:
 
 p1:
 
@@ -550,30 +559,6 @@ MultiplyBCByDE:
 ;==============================================================
 ; RotoZoom code
 ;==============================================================
-
-.Macro RotoZoomFromRotScale args toV, readScl
-    .ifeq readScl 1
-        ld de, (RotoScl) ; vy
-    .endif
-
-    ld bc, (RotoRot) ; vx
-    GetCosBC
-    call FPMultiplySignedAByDE    
-    push hl
-    
-    ld bc, (RotoRot) ; vx
-    GetSinBC
-    call FPMultiplySignedAByDE    
-    ld d, h
-    ld e, l
-    
-    pop bc
-
-    .ifeq toV 1
-        ld (RotoVX), bc
-        ld (RotoVY), de
-    .endif
-.endm
 
 .macro RotoZoomX args times, other
     ; x offset
@@ -978,6 +963,28 @@ PM7ComputePerLineIncs:
 
     ret
 
+PM7ComputePerLineIncsSimple:
+    ; x coord
+    ld a, ixh
+    ld e, a
+
+    ; y coord
+    ld a, iyh
+    add a, a
+    ld d, a
+
+    ld (hl), e
+    inc l
+    ld (hl), d
+    inc l
+    
+    exx
+    RotoZoomX 2, 1
+    RotoZoomY 2, 1
+    exx
+
+    ret
+
 PseudoMode7MonoFB:
 
     ; precaclulate increments for one line
@@ -988,9 +995,10 @@ PseudoMode7MonoFB:
 PM7DoPrecalc:
     ld hl, RotoPrecalcData
 
-    .repeat PM7LineCount * 2 index y_line
-        ld a, 255 / (1 + (1 - y_line / (PM7LineCount * 2)) * PM7Fov)
+    .repeat PM7LineCount index y_line
+        ld a, 255 / (1 + (1 - y_line / PM7LineCount) * PM7Fov)
         call PM7ComputePerLineIncs
+        call PM7ComputePerLineIncsSimple
     .endr
 
 PM7PrecalcEnd:
@@ -1014,7 +1022,7 @@ PM7LineLoop:
     ; VRAM pointer position
     push hl
     dec l
-    ;line index to vram offset
+    ;line index to vram offset ((line - 1) * 64)
     add hl, hl
     add hl, hl
     add hl, hl
@@ -1035,12 +1043,11 @@ PM7LineLoop:
     out (VDPControl), a
     pop hl
     
-    ; for line incs (a * 12)
+    ; for line incs (a * 8)
     ld a, PM7LineCount
     sub l
     ld l, a
     add a, a
-    add a, l
     add a, a
     add a, a
     exx
