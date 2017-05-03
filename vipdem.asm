@@ -186,15 +186,15 @@ banks 4
 .endm
 
 ; 256 step cosinus
-; input in bc and output in a
-.macro GetCosBC
+; input in c and output in a
+.macro GetCosC
     ld b, >CosLUT
     ld a, (bc)
 .endm
 
 ; 256 step sinus
-; input in bc and output in a
-.macro GetSinBC
+; input in c and output in a
+.macro GetSinC
     ld b, >SinLUT
     ld a, (bc)
 .endm
@@ -215,12 +215,12 @@ banks 4
     .endif
 
     ld bc, (RotoRot) ; vx
-    GetCosBC
+    GetCosC
     call FPMultiplySignedAByDE    
     push hl
     
     ld bc, (RotoRot) ; vx
-    GetSinBC
+    GetSinC
     call FPMultiplySignedAByDE    
     ld d, h
     ld e, l
