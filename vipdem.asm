@@ -49,7 +49,7 @@ banks 4
 .define RotoColumnCount 24
 .define RotoLineCount 24
 .define PM7LineCount 12
-.define PM7Fov 0.5
+.define PM7Fov 0.75
 
 ;==============================================================
 ; Utility macros
@@ -881,40 +881,32 @@ RotoRAMCodeRet:
     ; y coord
     ld d, (hl)
     inc l
-
-    ; x inc
-    ld a, (hl)
-    inc l
-    exx
-    ld l, a
-    exx
-    ld a, (hl)
-    inc l
-    exx
-    ld h, a
-    exx
-    
 .endm
 
 .macro PM7GetPixel args idx
-    .ifeq (idx & 1) 0
-        exx
-        RotoZoomX 1, 0
-        RotoZoomY 1, 0
-        exx
+    .ifeq (idx >> 7) 0
+        ; improve y resolution on first half of the line (odd line update)
+        .ifeq (idx & 1) 1
+            exx
+            RotoZoomX 1, 0
+            RotoZoomY 1, 0
+            exx
+        .endif
     .else
-        ; exx
-        ; ex de, hl
-        ; add iy, de
-        ; ex de, hl
-        ; exx
+        .ifeq (idx & 1) 0
+            exx
+            RotoZoomX 1, 0
+            RotoZoomY 1, 0
+            exx
+        .endif
     .endif
+
 
     ex de, hl
     ld d, iyh
     ld e, ixh
     ex de, hl
-
+    
     .ifeq (idx & 1) 0
         add hl, bc ; add line x/y offset
     .else
@@ -997,7 +989,7 @@ PM7DoPrecalc:
     ld hl, RotoPrecalcData
 
     .repeat PM7LineCount * 2 index y_line
-        ld a, 255; / (1 + (y_line / PM7LineCount * 2) * PM7Fov)
+        ld a, 255 / (1 + (1 - y_line / (PM7LineCount * 2)) * PM7Fov)
         call PM7ComputePerLineIncs
     .endr
 
@@ -1054,8 +1046,6 @@ PM7LineLoop:
     exx
 
     PM7GetLineIncs
-    
-    
 
     .repeat 32 index x_byte
         .repeat 4 index x_bit
@@ -1070,9 +1060,16 @@ PM7LineLoop:
         out (VDPData), a
         
         .ifeq x_byte 15
+            ; mirror plane
             NegateIX
             NegateIY
-        .endif
+            ; improve y resolution on second half of the line
+            exx
+            ld a, d
+            exx
+            add a, b
+            ld b, a
+       .endif
     .endr
     
     exx
