@@ -59,7 +59,7 @@ banks 4
 .define VBCount 8
 .define VBOriginX HalfWidth
 .define VBOriginY HalfHeight
-.define VBOriginZ 16
+.define VBOriginZ 32
 
 ;==============================================================
 ; Utility macros
@@ -658,9 +658,9 @@ MultiplyUnsignedHByE:
 
 ; Square Table 8-bit * 8-bit Signed
 ; Input: B = Multiplier, C = Multiplicand (both in range -128..127)
-; Output: HL = Product     
-MultiplySignedBByC:
-    push af
+; Output: HL = Product
+; Thrashes: AF
+FPMultiplySignedBByC:
     push bc
     push de
 
@@ -688,12 +688,11 @@ MultiplySignedBByC:
     add hl,bc
     sbc hl,de       ; HL = a^2 + b^2 - (a - b)^2
 
-    ; sra h       ; uncomment to get real product
-    ; rr  l
+    ;sra h       ; uncomment to get real product
+    ;rr  l
 
     pop de
     pop bc
-    pop af
     
     ret
 
@@ -708,12 +707,11 @@ MultiplySignedBByC:
     or  a
     sbc hl,de       ; HL = (a + b)^2 - a^2 - b^2
 
-    ; sra h       ; uncomment to get real product
-    ; rr  l
+    ;sra h       ; uncomment to get real product
+    ;rr  l
 
     pop de
     pop bc
-    pop af
     
     ret    
     
@@ -732,17 +730,23 @@ MultiplySignedBByC:
     ; x
     VBGetCFromDE
     ld b, ixl
-    call MultiplySignedBByC
+    push af
+    call FPMultiplySignedBByC
+    pop af
     ld a, h
     ; y
     VBGetCFromDE
     ld b, iyl
-    call MultiplySignedBByC
+    push af
+    call FPMultiplySignedBByC
+    pop af
     add a, h
     ; z
     VBGetCFromDE
     ld b, iyh
-    call MultiplySignedBByC
+    push af
+    call FPMultiplySignedBByC
+    pop af
     add a, h
 .endm
 
@@ -815,9 +819,11 @@ VectorBalls:
         ld c, (hl)
         inc l
         GetSinC
+        sra a
         ld (de), a
         inc e
         GetCosC
+        sra a
         ld (de), a
         inc e
     .endr
@@ -831,13 +837,13 @@ VectorBalls:
     ld c, a
     ld a, (VBSinCos + 1) ; cos a
     ld b, a
-    call MultiplySignedBByC
+    call FPMultiplySignedBByC
     ld a, h
     ld (de), a
     inc e
     ld a, (VBSinCos + 0) ; sin a
     ld b, a
-    call MultiplySignedBByC
+    call FPMultiplySignedBByC
     ld a, h
     ld (de), a
     inc e
@@ -850,18 +856,18 @@ VectorBalls:
     ld b, a
     ld a, (VBSinCos + 4) ; sin c
     ld c, a
-    call MultiplySignedBByC
+    call FPMultiplySignedBByC
     ld b, h
     ld ixl, b ; sin b * sin c
     ld a, (VBSinCos + 1) ; cos a
     ld c, a
-    call MultiplySignedBByC
+    call FPMultiplySignedBByC
     ld a, h
     ld iyl, a ; cos a * sin b * sin c
     ld a, (VBSinCos + 0) ; sin a
     ld b, a
     ld c, ixl
-    call MultiplySignedBByC
+    call FPMultiplySignedBByC
     ld a, h
     ld iyh, a ; sin a * sin b * sin c
     ; y
@@ -869,17 +875,16 @@ VectorBalls:
     ld c, a
     ld a, (VBSinCos + 0) ; sin a
     ld b, a
-    call MultiplySignedBByC
+    call FPMultiplySignedBByC
     ld a, h
     add a, iyl
     ld (de), a
     inc e
     ld a, (VBSinCos + 1) ; cos a
-    neg
     ld b, a
-    call MultiplySignedBByC
-    ld a, h
-    add a, iyh
+    call FPMultiplySignedBByC
+    ld a, iyh
+    sub h
     ld (de), a
     inc e
     ld a, (VBSinCos + 3) ; cos b
@@ -887,7 +892,7 @@ VectorBalls:
     ld b, a
     ld a, (VBSinCos + 4) ; sin c
     ld c, a
-    call MultiplySignedBByC
+    call FPMultiplySignedBByC
     ld a, h
     ld (de), a
     inc e
@@ -897,18 +902,18 @@ VectorBalls:
     ld b, a
     ld a, (VBSinCos + 5) ; cos c
     ld c, a
-    call MultiplySignedBByC
+    call FPMultiplySignedBByC
     ld b, h
     ld ixl, b ; sin b * cos c
     ld a, (VBSinCos + 1) ; cos a
     ld c, a
-    call MultiplySignedBByC
+    call FPMultiplySignedBByC
     ld a, h
     ld iyl, a ; cos a * sin b * cos c
     ld a, (VBSinCos + 0) ; sin a
     ld b, a
     ld c, ixl
-    call MultiplySignedBByC
+    call FPMultiplySignedBByC
     ld a, h
     ld iyh, a ; sin a * sin b * cos c
     ; z
@@ -916,7 +921,7 @@ VectorBalls:
     ld c, a
     ld a, (VBSinCos + 0) ; sin a
     ld b, a
-    call MultiplySignedBByC
+    call FPMultiplySignedBByC
     ld a, h
     sub iyl
     ld (de), a
@@ -924,7 +929,7 @@ VectorBalls:
     ld a, (VBSinCos + 1) ; cos a
     neg
     ld b, a
-    call MultiplySignedBByC
+    call FPMultiplySignedBByC
     ld a, h
     sub iyh
     ld (de), a
@@ -933,7 +938,7 @@ VectorBalls:
     ld b, a
     ld a, (VBSinCos + 5) ; cos c
     ld c, a
-    call MultiplySignedBByC
+    call FPMultiplySignedBByC
     ld a, h
     ld (de), a
 
@@ -967,24 +972,30 @@ VBLoop:
     add a, VBOriginZ
     ld l, a
     pop af
-    add a, VBOriginY
     ld b, a
     pop af
-    add a, VBOriginX
     ld c, a
     
     ; project & build SAT
 
     ld h, >InvLUT
     ld e, (hl) ; 1 / z
+    inc h
+    ld d, (hl)
     
-    ld h, c
-ld l, h;    call MultiplyHByE
-    ld c, l; px
+    ld a, c
+    call FPMultiplySignedAByDE
+    ld a, b
+    ld b, h ; px
+    call FPMultiplySignedAByDE
+
+    ; add x / y 2d origin
     
-    ld h, b
-ld l, h;    call MultiplyHByE
-    ld a, l ; py
+    ld a, b
+    add a, VBOriginX
+    ld c, a
+    ld a, h ; py
+    add a, VBOriginY
 
     ; don't let sprites y become $d0 (terminator)
     ld b, 192
@@ -1020,7 +1031,14 @@ ld l, h;    call MultiplyHByE
 
     ; sat index (z)
     ld a, e
-    and $3c
+    rrca
+    ld d, $3c
+    and d
+    ; avoid fully transparent version
+    cp d
+    jr nz, +
+    sub 4
++:    
     ld (hl), a
     inc l
     inc l
@@ -1602,7 +1620,7 @@ PM7LineLoop:
 ;==============================================================
 
 .bank 2 slot 2
-.org $3b00
+.org $3a00
 SMulLUT:
 .db $00, $01, $04, $09, $10, $19, $24, $31, $40, $51, $64, $79, $90, $A9, $C4, $E1
 .db $00, $21, $44, $69, $90, $B9, $E4, $11, $40, $71, $A4, $D9, $10, $49, $84, $C1
@@ -1637,9 +1655,19 @@ SMulLUT:
 .db $04, $03, $03, $03, $03, $02, $02, $02, $02, $02, $01, $01, $01, $01, $01, $01
 .db $01, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00
 InvLUT:
-.db $ff
-.repeat 255 index x
-    .db 255.5 / (x + 1)
+.repeat 256 index x
+    .ifeq x 0
+        .db 0
+    .else
+        .db <(65535 / x)
+    .endif
+.endr
+.repeat 256 index x
+    .ifeq x 0
+        .db 0
+    .else
+        .db >(65535 / x)
+    .endif
 .endr
 SinLUT:
 .dbsin 0, 255, 360 / 256, 127.999, 0
@@ -1688,17 +1716,17 @@ VBData:
 .incbin "vb.sms" fsize VBSize
 
 VBInitX:
-.dsb 4, -32
-.dsb 4, 32
+.dsb 4, -64
+.dsb 4, 63
 VBInitY:
 .repeat 2
-    .dsb 2, -32
-    .dsb 2, 32
+    .dsb 2, -64
+    .dsb 2, 63
 .endr
 VBInitZ:
 .repeat 4
-    .db -32
-    .db 32
+    .db -64
+    .db 63
 .endr    
 
 .bank 0 slot 0
