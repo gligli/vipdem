@@ -41,6 +41,10 @@ banks 4
 .define TileMapSize 1536
 .define TilePaletteSize 16
 .define BankSize_ 16384
+.define Width 256
+.define Height 192
+.define HalfWidth (Width / 2)
+.define HalfHeight (Height / 2)
 
 ;==============================================================
 ; Program defines
@@ -50,6 +54,7 @@ banks 4
 .define RotoLineCount 24
 .define PM7LineCount 12
 .define PM7Fov 0.75
+.define VectorBallsCount 8
 
 ;==============================================================
 ; Utility macros
@@ -237,13 +242,19 @@ banks 4
 ; RAM variables
 ;==============================================================
 
+; Global variables
 .enum $c000 export
-    RotoRAMBakeIncs   dsb 256 ; align 128
+    CurFrameIdx       dw
+    SPSave            dw
+    CurEffect         db
+.ende
+
+; RotoZoom / PseudoMode7
+.enum $c100 export
+    RotoRAMBakeIncs   dsb 256 ; align 256
     RotoRAMBakeIncsEnd .
     RotoPrecalcData   dsb 256 ; align 256
 
-    SPSave            dw
-    CurFrameIdx       dw
     RotoRot           dw ; (8.8 fixed point)
     RotoScl           dw ; (8.8 fixed point)
     RotoX             dw ; (8.8 fixed point)
@@ -251,10 +262,16 @@ banks 4
     RotoVX            dw ; (8.8 fixed point)
     RotoVY            dw ; (8.8 fixed point)
     PM7CurLine        db
-    CurEffect         db
     
     ; keep this last
     RAMCode           .
+.ende
+
+; VectorBalls
+.enum $c100 export
+    VBX               dsb 256
+    VBY               dsb 256
+    VBZ               dsb 256
 .ende
 
 ;==============================================================
@@ -315,7 +332,7 @@ main:
     jr nz, -
 
     ; Sprite table
-    SetVDPAddress $2000 | VRAMWrite
+    SetVDPAddress $2800 | VRAMWrite
     ld hl,SpriteData
     ld bc,256
     CopyToVDP
@@ -325,11 +342,11 @@ main:
     ld (CurFrameIdx), a
     ld (CurFrameIdx + $01), a
 
-    ld a, 1
+    ld a, 2
     ld (CurEffect), a
 
-    ; init RotoZoom / PseudoMode7
-    call PseudoMode7Init
+    ; init RotoZoom / PseudoMode7 / VectorBalls
+    call VectorBallsInit
 
     ; load tiles (Monochrome framebuffer emulation)
     SetVDPAddress $0000 | VRAMWrite
@@ -465,9 +482,13 @@ p1:
     call RotoZoomMonoFB
     jp MainLoop
 +:
+    dec a
+    jp nz, +
     call PseudoMode7MonoFB
     jp MainLoop
-
++:
+    call VectorBalls
+    jp MainLoop
 ;==============================================================
 ; Utility functions
 ;==============================================================
@@ -553,6 +574,48 @@ MultiplyBCByDE:
         inc bc  ; This instruction (with the jump) is like an "ADC DE,0"
     +:
     .endr
+
+    ret
+    
+;==============================================================
+; VectorBalls code
+;==============================================================
+
+VectorBallsInit:
+    ; clear XYZ
+    ld hl, $c100
+    ld de, $c101
+    ld bc, $0300
+    xor a
+    ld (hl), a
+    ldir
+
+    ; init X
+    ld hl, VBInitX
+    ld de, VBX
+    ld bc, VectorBallsCount
+    ldir
+
+    ; init Y
+    ld hl, VBInitY
+    ld de, VBY
+    ld bc, VectorBallsCount
+    ldir
+    
+    ; init Z
+    ld hl, VBInitZ
+    ld de, VBZ
+    ld bc, VectorBallsCount
+    ldir
+
+    ; load tiles (VectorBalls)
+    SetVDPAddress $2000 | VRAMWrite
+    ld hl,VBData
+    ld bc,VBSize
+    CopyToVDP
+    ret
+
+VectorBalls:
 
     ret
     
@@ -1130,7 +1193,7 @@ PSGInitData:
 PSGInitDataEnd:
 
 VDPInitData:
-.db $14,$80,$00,$81,$ff,$82,$41,$85,$fb,$86,$ff,$87,$00,$88,$00,$89,$ff,$8a
+.db $14,$80,$00,$81,$ff,$82,$51,$85,$ff,$86,$ff,$87,$00,$88,$00,$89,$ff,$8a
 VDPInitDataEnd:
 
 LocalPalette:
@@ -1140,24 +1203,42 @@ LocalPalette:
     .db 16
     .db 47
 .endr
-.repeat 16
-    .db 16
-.endr
-
+.db 63, 63, 47, 31,
+.db 11,  7,  3, 19,
+.db  2, 34, 33, 49,
+.db 52, 48, 32, 16,
+    
 SpriteData:
 .repeat 64 index idx
-    .db 192 + (idx & 48)
+    .db 64 + (idx & 56) << 1
 .endr
 .repeat 64
     .db 0
 .endr
 .repeat 64 index idx
-    .db 128 + ((idx * 8) & 127)
-    .db idx
+    .db 128 + ((idx * 8) & 63)
+    .db (idx * 2) & $3f
 .endr
 
 MonoFBData:
 .incbin "MonoFB.bin" fsize MonoFBSize
+
+VBData:
+.incbin "vb.sms" fsize VBSize
+
+VBInitX:
+.dsb 4, 96
+.dsb 4, 160
+VBInitY:
+.repeat 2
+    .dsb 2, 64
+    .dsb 2, 128
+.endr
+VBInitZ:
+.repeat 4
+    .db 96
+    .db 160
+.endr    
 
 .bank 0 slot 0
 .org $0000
