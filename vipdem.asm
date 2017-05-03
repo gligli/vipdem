@@ -275,6 +275,9 @@ banks 4
     VBY               dsb 256
     VBZ               dsb 256
     VBSAT             dsb 256
+    VBRX              db
+    VBRY              db
+    VBRZ              db
 .ende
 
 ;==============================================================
@@ -295,12 +298,6 @@ main:
     di              ; disable interrupts
     im 1            ; interrupt mode 1
     
-    ; this maps the first 48K of ROM to $0000-$BFFF
-    ld de, $FFFC
-    ld hl, init_tab
-    ld bc, $0004
-    ldir
-
     ; set up stack
 
     ld sp, $dff0
@@ -314,6 +311,23 @@ main:
     ld (hl), a
     ldir
 
+    ; init current frame idx
+    xor a
+    ld (CurFrameIdx), a
+    ld (CurFrameIdx + $01), a
+
+    ; default effect
+    ld a, 3
+    ld (CurEffect), a
+
+Reinit:
+
+    ; this maps the first 48K of ROM to $0000-$BFFF
+    ld de, $FFFC
+    ld hl, init_tab
+    ld bc, $0004
+    ldir
+   
     ; set up VDP registers
 
     ld hl,VDPInitData
@@ -323,7 +337,7 @@ main:
 
     ; clear VRAM
 
-    ; 1. cet VRAM write address to $0000
+    ; 1. set VRAM write address to $0000
     SetVDPAddress $0000 | VRAMWrite
     ; 2. output 16KB of zeroes
     ld bc, $4000     ; counter for 16KB of VRAM
@@ -334,22 +348,10 @@ main:
     or c
     jr nz, -
 
-    ; Sprite table
+    ; dummy Sprite table
     SetVDPAddress $2800 | VRAMWrite
-    ld hl,SpriteData
-    ld bc,256
-    CopyToVDP
-
-    ; init current frame idx
-    xor a
-    ld (CurFrameIdx), a
-    ld (CurFrameIdx + $01), a
-
-    ld a, 2
-    ld (CurEffect), a
-
-    ; init RotoZoom / PseudoMode7 / VectorBalls
-    call VectorBallsInit
+    ld a, $d0
+    out (VDPData), a
 
     ; load tiles (Monochrome framebuffer emulation)
     SetVDPAddress $0000 | VRAMWrite
@@ -370,6 +372,8 @@ main:
         inc iy
     .endr
 
+    in a, (VDPControl) ; ack any previous int
+    
     ; turn screen on
     ld a, %1100010
 ;          ||||||`- Zoomed sprites -> 16x16 pixels
@@ -383,12 +387,21 @@ main:
     ld a, $81
     out (VDPControl), a
 
-    in a, (VDPControl) ; ack any previous int
-    ; ei
-
-    ; anim slot
-    ld a, 3
-    ld (MapperSlot1), a
+    ; Effect init
+    
+    ld a, (CurEffect)
+    or a
+    jp nz, +
+    call RotoZoomInit
+    jp ++
++:
+    dec a
+    jp nz, +
+    call PseudoMode7Init
+    jp ++
++:
+    call VectorBallsInit
+++:    
 
 ;==============================================================
 ; Main loop
@@ -420,27 +433,29 @@ p0:
     SetVDPAddress $2fff | VRAMWrite
 ++:
 
-    ; RotoZoom control using D-Pad
+    ; Effect switcher
+    
     in a, (IOPortA)
-    bit 5, a
+    ld c, a
+    bit 5, c
     jp nz, +
-        ld hl, CurEffect
-        bit 0, (hl)
-        jp z, ++
-        res 0, (hl)
-        call RotoZoomInit
-        jp MainLoop
-    ++:
-        set 0, (hl)
-        call PseudoMode7Init
-        jp MainLoop
+        ld a, (CurEffect)
+        inc a
+        and 3
+        ld (CurEffect), a
+        jp Reinit
+        
 +:
+    ld a, (CurEffect)
+    cp 2
+    jp z, ++
 
-    bit 4, a
+    ; Roto / PM7 controls
+
+    ld ixl, c
+    bit 4, c
     jp nz, +
-    push af
     RotoZoomFromRotScale 0, 1
-    pop af
     ld hl, (RotoX)
     or a
     sbc hl, de
@@ -451,6 +466,7 @@ p0:
     add hl, bc
     ld (RotoY), hl
 +:    
+    ld a, ixl
 
     ld bc, $0020
     ld hl, (RotoScl)
@@ -477,6 +493,36 @@ p0:
 +:
     ld (RotoRot), hl
 
+    jp p1
+   
+++:    
+    ; VB controls
+
+    ld a, c
+    bit 4, c
+    jp nz, +
+    ld hl, VBRZ
+    inc (hl)
++:    
+    ld hl, VBRY
+    rrca
+    jp c, +
+    dec (hl)
++:   
+    rrca
+    jp c, +
+    inc (hl)
++:   
+    ld hl, VBRX
+    rrca
+    jp c, +
+    dec (hl)
++:   
+    rrca
+    jp c, +
+    inc (hl)
++:   
+    
 p1:
 
     ld a, (CurEffect)
@@ -657,6 +703,7 @@ VBLoop:
     ld h, >VBX
     ld l, a ; ixh
     ld c, (hl) ; x
+    
     inc h ; >VBY
     ld b, (hl) ; y
     inc h ; >VBZ
@@ -847,6 +894,10 @@ RotoRAMCodeBakePos4:
 .endm
 
 RotoZoomInit:
+    ; texture slot
+    ld a, 3
+    ld (MapperSlot1), a
+
     ld hl, $0000
     ld (RotoRot), hl
     ld hl, $02b0
@@ -1096,6 +1147,10 @@ RotoRAMCodeRet:
 .endm
 
 PseudoMode7Init:
+    ; texture slot
+    ld a, 3
+    ld (MapperSlot1), a
+
     ld hl, $0140
     ld (RotoRot), hl
     ld hl, $0400
