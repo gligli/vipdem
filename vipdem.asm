@@ -52,9 +52,11 @@ banks 4
 
 .define RotoColumnCount 24
 .define RotoLineCount 24
+
 .define PM7LineCount 12
 .define PM7Fov 0.75
-.define VectorBallsCount 8
+
+.define VBCount 8
 
 ;==============================================================
 ; Utility macros
@@ -272,6 +274,7 @@ banks 4
     VBX               dsb 256
     VBY               dsb 256
     VBZ               dsb 256
+    VBSAT             dsb 256
 .ende
 
 ;==============================================================
@@ -489,6 +492,7 @@ p1:
 +:
     call VectorBalls
     jp MainLoop
+    
 ;==============================================================
 ; Utility functions
 ;==============================================================
@@ -577,6 +581,22 @@ MultiplyBCByDE:
 
     ret
     
+
+; Multiply 8-bit values
+; In:  Multiply H with E
+; Out: HL = result
+MultiplyHByE:
+	ld d,0
+	ld l,d
+	.repeat 8
+        add hl,hl
+        jr nc, +
+        add hl,de
+    +:
+	.endr
+    
+	ret    
+    
 ;==============================================================
 ; VectorBalls code
 ;==============================================================
@@ -593,19 +613,19 @@ VectorBallsInit:
     ; init X
     ld hl, VBInitX
     ld de, VBX
-    ld bc, VectorBallsCount
+    ld bc, VBCount
     ldir
 
     ; init Y
     ld hl, VBInitY
     ld de, VBY
-    ld bc, VectorBallsCount
+    ld bc, VBCount
     ldir
     
     ; init Z
     ld hl, VBInitZ
     ld de, VBZ
-    ld bc, VectorBallsCount
+    ld bc, VBCount
     ldir
 
     ; load tiles (VectorBalls)
@@ -613,9 +633,93 @@ VectorBallsInit:
     ld hl,VBData
     ld bc,VBSize
     CopyToVDP
+
+    ; SAT address ($2800)
+    ld a, $51
+    out (VDPControl), a
+    ld a, $85
+    out (VDPControl), a
+    
+    ; SAT terminator
+    ld hl, VBSAT + VBCount * 2
+    ld a, $d0
+    ld (hl), a
     ret
 
 VectorBalls:
+    xor a
+    ld ixh, a
+    
+VBLoop:    
+
+    ; project & build SAT
+
+    ld h, >VBX
+    ld l, a ; ixh
+    ld c, (hl) ; x
+    inc h ; >VBY
+    ld b, (hl) ; y
+    inc h ; >VBZ
+    ld l, (hl) ; z
+  
+    ld h, >InvLUT
+    ld e, (hl) ; 1 / z
+    
+    ld h, c
+    call MultiplyHByE
+    ld c, l ; px
+    
+    ld h, b
+    call MultiplyHByE
+    ld a, l ; py
+    
+    ex de, hl
+    ld e, ixh
+    sla e
+    ld d, >VBSAT
+    ex de, hl
+    
+    ; sat y
+    ld (hl), a
+    inc l
+    ld (hl), a
+    dec l
+
+    ; sat second part
+    sla l
+    set 7, l
+
+    ; sat x
+    ld (hl), c
+    inc l
+    inc l
+    ld a, c
+    add a, 8
+    ld (hl), a
+    dec l
+
+    ; sat index (z)
+    ld a, e
+    and $3c
+    ld (hl), a
+    inc l
+    inc l
+    add a, 2
+    ld (hl), a
+
+    inc ixh
+    ld a, ixh
+    cp VBCount
+    jp nz, VBLoop
+
+    ; upload sat to VDP
+    
+    SetVDPAddress $2800 | VRAMWrite
+    ld l, 0
+    ld c, VDPData
+    .repeat 256
+        outi
+    .endr
 
     ret
     
@@ -1179,7 +1283,12 @@ PM7LineLoop:
 ;==============================================================
 
 .bank 2 slot 2
-.org $3e00
+.org $3d00
+InvLUT:
+.db $ff
+.repeat 255 index x
+    .db 255.5 / (x + 1)
+.endr
 SinLUT:
 .dbsin 0, 255, 360 / 256, 127.999, 0
 CosLUT:
@@ -1236,8 +1345,8 @@ VBInitY:
 .endr
 VBInitZ:
 .repeat 4
-    .db 96
-    .db 160
+    .db 24
+    .db 192
 .endr    
 
 .bank 0 slot 0
