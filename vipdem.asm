@@ -275,6 +275,8 @@ banks 4
     VBY               dsb 256
     VBZ               dsb 256
     VBSAT             dsb 256
+    VBSinCos          dsb 6
+    VBFactors         dsb 9
     VBRX              db
     VBRY              db
     VBRZ              db
@@ -631,7 +633,7 @@ MultiplyBCByDE:
     ret
     
 
-; Multiply 8-bit values
+; Multiply unsigned 8-bit values
 ; In:  Multiply H with E
 ; Out: HL = result
 MultiplyHByE:
@@ -649,6 +651,32 @@ MultiplyHByE:
 ;==============================================================
 ; VectorBalls code
 ;==============================================================
+
+.macro VBGetHFromBC
+    ex af, af'
+    ld a, (bc)
+    inc c
+    ld h, a
+    ex af, af'
+.endm
+
+.macro VBGetNewCoord
+    ; x
+    VBGetHFromBC
+    ld e, ixl
+    call MultiplyHByE
+    ld a, h
+    ; y
+    VBGetHFromBC
+    ld e, iyl
+    call MultiplyHByE
+    add a, h
+    ; z
+    VBGetHFromBC
+    ld e, iyh
+    call MultiplyHByE
+    add a, h
+.endm
 
 VectorBallsInit:
     ; clear XYZ
@@ -693,31 +721,197 @@ VectorBallsInit:
     ld hl, VBSAT + VBCount * 2
     ld a, $d0
     ld (hl), a
+    
+    xor a
+    ld (VBRX), a
+    ld (VBRY), a
+    ld (VBRZ), a
+    
     ret
 
 VectorBalls:
+    ; upload current sat to VDP
+    
+    SetVDPAddress $2800 | VRAMWrite
+    ld hl, VBSAT
+    ld c, VDPData
+    .repeat 256
+        outi
+    .endr
+
+    ; get sin / cos of angles
+    
+    ld de, VBSinCos
+    ld hl, VBRX
+    .repeat 3
+        ld c, (hl)
+        inc l
+        GetSinC
+        ld (de), a
+        inc e
+        GetCosC
+        ld (de), a
+        inc e
+    .endr
+
+    ; compute coordinates factors
+
+    ld bc, VBFactors
+
+    ; x
+    ld a, (VBSinCos + 3) ; cos b
+    ld e, a
+    ld a, (VBSinCos + 1) ; cos a
+    ld h, a
+    call MultiplyHByE
+    ld a, h
+    ld (bc), a
+    inc c
+    ld a, (VBSinCos + 0) ; sin a
+    ld h, a
+    call MultiplyHByE
+    ld a, h
+    ld (bc), a
+    inc c
+    ld a, (VBSinCos + 2) ; sin b
+    ld (bc), a
+    inc c
+
+    ; y pre
+    ld a, (VBSinCos + 2) ; sin b
+    ld h, a
+    ld a, (VBSinCos + 4) ; sin c
+    ld e, a
+    call MultiplyHByE
+    ld a, h
+    ld ixl, a ; sin b * sin c
+    ld h, a
+    ld a, (VBSinCos + 1) ; cos a
+    ld e, a
+    call MultiplyHByE
+    ld a, h
+    ld iyl, a ; cos a * sin b * sin c
+    ld a, (VBSinCos + 0) ; sin a
+    ld h, a
+    ld e, ixl
+    call MultiplyHByE
+    ld a, h
+    ld iyh, a ; sin a * sin b * sin c
+    ; y
+    ld a, (VBSinCos + 5) ; cos c
+    ld e, a
+    ld a, (VBSinCos + 0) ; sin a
+    ld h, a
+    call MultiplyHByE
+    ld a, h
+    add a, iyl
+    ld (bc), a
+    inc c
+    ld a, (VBSinCos + 1) ; cos a
+    neg
+    ld h, a
+    call MultiplyHByE
+    ld a, h
+    add a, iyh
+    ld (bc), a
+    inc c
+    ld a, (VBSinCos + 3) ; cos b
+    neg
+    ld h, a
+    ld a, (VBSinCos + 4) ; sin c
+    ld e, a
+    call MultiplyHByE
+    ld a, h
+    ld (bc), a
+    inc c
+    
+    ; z pre
+    ld a, (VBSinCos + 2) ; sin b
+    ld h, a
+    ld a, (VBSinCos + 5) ; cos c
+    ld e, a
+    call MultiplyHByE
+    ld a, h
+    ld ixl, a ; sin b * cos c
+    ld h, a
+    ld a, (VBSinCos + 1) ; cos a
+    ld e, a
+    call MultiplyHByE
+    ld a, h
+    ld iyl, a ; cos a * sin b * cos c
+    ld a, (VBSinCos + 0) ; sin a
+    ld h, a
+    ld e, ixl
+    call MultiplyHByE
+    ld a, h
+    ld iyh, a ; sin a * sin b * cos c
+    ; z
+    ld a, (VBSinCos + 4) ; sin c
+    ld e, a
+    ld a, (VBSinCos + 0) ; sin a
+    ld h, a
+    call MultiplyHByE
+    ld a, h
+    sub iyl
+    ld (bc), a
+    inc c
+    ld a, (VBSinCos + 1) ; cos a
+    neg
+    ld h, a
+    call MultiplyHByE
+    ld a, h
+    sub iyh
+    ld (bc), a
+    inc c
+    ld a, (VBSinCos + 3) ; cos b
+    ld h, a
+    ld a, (VBSinCos + 5) ; cos c
+    ld e, a
+    call MultiplyHByE
+    ld a, h
+    ld (bc), a
+
     xor a
     ld ixh, a
-    
-VBLoop:    
 
-    ; project & build SAT
+VBLoop:    
+    ; get xyz
 
     ld h, >VBX
     ld l, a ; ixh
-    ld c, (hl) ; x
-    
+    ld a, (hl) ; x
+    ld ixl, a
     inc h ; >VBY
-    ld b, (hl) ; y
+    ld a, (hl) ; y
+    ld iyl, a
     inc h ; >VBZ
-    ld l, (hl) ; z
-  
+    ld a, (hl) ; z
+    ld iyh, a
+
+    ; apply tranformations
+
+    ld bc, VBFactors
+
+    VBGetNewCoord
+    push af
+    VBGetNewCoord
+    push af
+    VBGetNewCoord
+    
+    ld l, a
+    pop af
+    ld b, a
+    pop af
+    ld c, a
+    
+    ; project & build SAT
+
     ld h, >InvLUT
     ld e, (hl) ; 1 / z
     
     ld h, c
     call MultiplyHByE
-    ld c, l ; px
+    ld c, l; px
     
     ld h, b
     call MultiplyHByE
@@ -761,15 +955,6 @@ VBLoop:
     ld a, ixh
     cp VBCount
     jp nz, VBLoop
-
-    ; upload sat to VDP
-    
-    SetVDPAddress $2800 | VRAMWrite
-    ld l, 0
-    ld c, VDPData
-    .repeat 256
-        outi
-    .endr
 
     ret
     
@@ -1403,8 +1588,8 @@ VBInitY:
 .endr
 VBInitZ:
 .repeat 4
-    .db 24
-    .db 192
+    .db 96
+    .db 160
 .endr    
 
 .bank 0 slot 0
