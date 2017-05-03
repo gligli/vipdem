@@ -57,6 +57,9 @@ banks 4
 .define PM7Fov 0.75
 
 .define VBCount 8
+.define VBOriginX HalfWidth
+.define VBOriginY HalfHeight
+.define VBOriginZ 16
 
 ;==============================================================
 ; Utility macros
@@ -552,9 +555,9 @@ p1:
 ; The following routine multiplies de by a and places the result in ahl
 ; (which means a is the most significant byte of the product, l the least significant and h the intermediate one...)
 MultiplyUnsignedAByDE:
-    ld	c, 0
-    ld	h, c
-    ld	l, h
+    ld c, 0
+    ld h, c
+    ld l, h
 
     add a,a  ; optimised 1st iteration
     jp nc, +
@@ -575,7 +578,7 @@ MultiplyUnsignedAByDE:
 ; 16*8 fixed point signed multiplication
 ; input in a/de, output in hl
 FPMultiplySignedAByDE:
-    ld	c, 0
+    ld c, 0
     ld h,c
     ld l,c
 
@@ -636,45 +639,110 @@ MultiplyBCByDE:
 ; Multiply unsigned 8-bit values
 ; In:  Multiply H with E
 ; Out: HL = result
-MultiplyHByE:
-	ld d,0
-	ld l,d
-	.repeat 8
+MultiplyUnsignedHByE:
+    ld d,0
+    ld l,d
+    
+    sla h		; optimised 1st iteration
+    jr nc, +
+    ld l,e
++:
+    
+    .repeat 7
         add hl,hl
         jr nc, +
         add hl,de
     +:
-	.endr
+    .endr
+    ret    
+
+; Square Table 8-bit * 8-bit Signed
+; Input: B = Multiplier, C = Multiplicand (both in range -128..127)
+; Output: HL = Product     
+MultiplySignedBByC:
+    push af
+    push bc
+    push de
+
+    ld  h, >SMulLUT
+    ld  l,b
+    ld  a,b
+    ld  e,(hl)
+    inc h
+    ld  d,(hl)      ; DE = a^2
+    ld  l,c
+    ld  b,(hl)
+    dec h
+    ld  c,(hl)      ; BC = b^2
+    add a,l     ; let's try (a + b)
+    jp  pe, @Plus     ; jump if no overflow
+
+    sub l
+    sub l
+    ld  l,a
+    ld  a,(hl)
+    inc h
+    ld  h,(hl)
+    ld  l,a     ; HL = (a - b)^2
+    ex  de,hl
+    add hl,bc
+    sbc hl,de       ; HL = a^2 + b^2 - (a - b)^2
+
+    ; sra h       ; uncomment to get real product
+    ; rr  l
+
+    pop de
+    pop bc
+    pop af
     
-	ret    
+    ret
+
+@Plus:
+    ld  l,a
+    ld  a,(hl)
+    inc h
+    ld  h,(hl)
+    ld  l,a     ; HL = (a + b)^2
+    or  a
+    sbc hl,bc
+    or  a
+    sbc hl,de       ; HL = (a + b)^2 - a^2 - b^2
+
+    ; sra h       ; uncomment to get real product
+    ; rr  l
+
+    pop de
+    pop bc
+    pop af
+    
+    ret    
     
 ;==============================================================
 ; VectorBalls code
 ;==============================================================
 
-.macro VBGetHFromBC
-    ex af, af'
-    ld a, (bc)
-    inc c
-    ld h, a
-    ex af, af'
+.macro VBGetCFromDE
+    ex de, hl
+    ld c, (hl)
+    inc l
+    ex de, hl
 .endm
 
 .macro VBGetNewCoord
     ; x
-    VBGetHFromBC
-    ld e, ixl
-    call MultiplyHByE
+    VBGetCFromDE
+    ld b, ixl
+    call MultiplySignedBByC
     ld a, h
     ; y
-    VBGetHFromBC
-    ld e, iyl
-    call MultiplyHByE
+    VBGetCFromDE
+    ld b, iyl
+    call MultiplySignedBByC
     add a, h
     ; z
-    VBGetHFromBC
-    ld e, iyh
-    call MultiplyHByE
+    VBGetCFromDE
+    ld b, iyh
+    call MultiplySignedBByC
     add a, h
 .endm
 
@@ -756,120 +824,118 @@ VectorBalls:
 
     ; compute coordinates factors
 
-    ld bc, VBFactors
+    ld de, VBFactors
 
     ; x
     ld a, (VBSinCos + 3) ; cos b
-    ld e, a
+    ld c, a
     ld a, (VBSinCos + 1) ; cos a
-    ld h, a
-    call MultiplyHByE
+    ld b, a
+    call MultiplySignedBByC
     ld a, h
-    ld (bc), a
-    inc c
+    ld (de), a
+    inc e
     ld a, (VBSinCos + 0) ; sin a
-    ld h, a
-    call MultiplyHByE
+    ld b, a
+    call MultiplySignedBByC
     ld a, h
-    ld (bc), a
-    inc c
+    ld (de), a
+    inc e
     ld a, (VBSinCos + 2) ; sin b
-    ld (bc), a
-    inc c
+    ld (de), a
+    inc e
 
     ; y pre
     ld a, (VBSinCos + 2) ; sin b
-    ld h, a
+    ld b, a
     ld a, (VBSinCos + 4) ; sin c
-    ld e, a
-    call MultiplyHByE
-    ld a, h
-    ld ixl, a ; sin b * sin c
-    ld h, a
+    ld c, a
+    call MultiplySignedBByC
+    ld b, h
+    ld ixl, b ; sin b * sin c
     ld a, (VBSinCos + 1) ; cos a
-    ld e, a
-    call MultiplyHByE
+    ld c, a
+    call MultiplySignedBByC
     ld a, h
     ld iyl, a ; cos a * sin b * sin c
     ld a, (VBSinCos + 0) ; sin a
-    ld h, a
-    ld e, ixl
-    call MultiplyHByE
+    ld b, a
+    ld c, ixl
+    call MultiplySignedBByC
     ld a, h
     ld iyh, a ; sin a * sin b * sin c
     ; y
     ld a, (VBSinCos + 5) ; cos c
-    ld e, a
+    ld c, a
     ld a, (VBSinCos + 0) ; sin a
-    ld h, a
-    call MultiplyHByE
+    ld b, a
+    call MultiplySignedBByC
     ld a, h
     add a, iyl
-    ld (bc), a
-    inc c
+    ld (de), a
+    inc e
     ld a, (VBSinCos + 1) ; cos a
     neg
-    ld h, a
-    call MultiplyHByE
+    ld b, a
+    call MultiplySignedBByC
     ld a, h
     add a, iyh
-    ld (bc), a
-    inc c
+    ld (de), a
+    inc e
     ld a, (VBSinCos + 3) ; cos b
     neg
-    ld h, a
+    ld b, a
     ld a, (VBSinCos + 4) ; sin c
-    ld e, a
-    call MultiplyHByE
+    ld c, a
+    call MultiplySignedBByC
     ld a, h
-    ld (bc), a
-    inc c
+    ld (de), a
+    inc e
     
     ; z pre
     ld a, (VBSinCos + 2) ; sin b
-    ld h, a
+    ld b, a
     ld a, (VBSinCos + 5) ; cos c
-    ld e, a
-    call MultiplyHByE
-    ld a, h
-    ld ixl, a ; sin b * cos c
-    ld h, a
+    ld c, a
+    call MultiplySignedBByC
+    ld b, h
+    ld ixl, b ; sin b * cos c
     ld a, (VBSinCos + 1) ; cos a
-    ld e, a
-    call MultiplyHByE
+    ld c, a
+    call MultiplySignedBByC
     ld a, h
     ld iyl, a ; cos a * sin b * cos c
     ld a, (VBSinCos + 0) ; sin a
-    ld h, a
-    ld e, ixl
-    call MultiplyHByE
+    ld b, a
+    ld c, ixl
+    call MultiplySignedBByC
     ld a, h
     ld iyh, a ; sin a * sin b * cos c
     ; z
     ld a, (VBSinCos + 4) ; sin c
-    ld e, a
+    ld c, a
     ld a, (VBSinCos + 0) ; sin a
-    ld h, a
-    call MultiplyHByE
+    ld b, a
+    call MultiplySignedBByC
     ld a, h
     sub iyl
-    ld (bc), a
-    inc c
+    ld (de), a
+    inc e
     ld a, (VBSinCos + 1) ; cos a
     neg
-    ld h, a
-    call MultiplyHByE
+    ld b, a
+    call MultiplySignedBByC
     ld a, h
     sub iyh
-    ld (bc), a
-    inc c
+    ld (de), a
+    inc e
     ld a, (VBSinCos + 3) ; cos b
-    ld h, a
+    ld b, a
     ld a, (VBSinCos + 5) ; cos c
-    ld e, a
-    call MultiplyHByE
+    ld c, a
+    call MultiplySignedBByC
     ld a, h
-    ld (bc), a
+    ld (de), a
 
     xor a
     ld ixh, a
@@ -890,7 +956,7 @@ VBLoop:
 
     ; apply tranformations
 
-    ld bc, VBFactors
+    ld de, VBFactors
 
     VBGetNewCoord
     push af
@@ -898,10 +964,13 @@ VBLoop:
     push af
     VBGetNewCoord
     
+    add a, VBOriginZ
     ld l, a
     pop af
+    add a, VBOriginY
     ld b, a
     pop af
+    add a, VBOriginX
     ld c, a
     
     ; project & build SAT
@@ -910,12 +979,19 @@ VBLoop:
     ld e, (hl) ; 1 / z
     
     ld h, c
-    call MultiplyHByE
+ld l, h;    call MultiplyHByE
     ld c, l; px
     
     ld h, b
-    call MultiplyHByE
+ld l, h;    call MultiplyHByE
     ld a, l ; py
+
+    ; don't let sprites y become $d0 (terminator)
+    ld b, 192
+    cp b
+    jr c, +
+    ld a, b
++:    
     
     ex de, hl
     ld e, ixh
@@ -1526,7 +1602,40 @@ PM7LineLoop:
 ;==============================================================
 
 .bank 2 slot 2
-.org $3d00
+.org $3b00
+SMulLUT:
+.db $00, $01, $04, $09, $10, $19, $24, $31, $40, $51, $64, $79, $90, $A9, $C4, $E1
+.db $00, $21, $44, $69, $90, $B9, $E4, $11, $40, $71, $A4, $D9, $10, $49, $84, $C1
+.db $00, $41, $84, $C9, $10, $59, $A4, $F1, $40, $91, $E4, $39, $90, $E9, $44, $A1
+.db $00, $61, $C4, $29, $90, $F9, $64, $D1, $40, $B1, $24, $99, $10, $89, $04, $81
+.db $00, $81, $04, $89, $10, $99, $24, $B1, $40, $D1, $64, $F9, $90, $29, $C4, $61
+.db $00, $A1, $44, $E9, $90, $39, $E4, $91, $40, $F1, $A4, $59, $10, $C9, $84, $41
+.db $00, $C1, $84, $49, $10, $D9, $A4, $71, $40, $11, $E4, $B9, $90, $69, $44, $21
+.db $00, $E1, $C4, $A9, $90, $79, $64, $51, $40, $31, $24, $19, $10, $09, $04, $01
+.db $00, $01, $04, $09, $10, $19, $24, $31, $40, $51, $64, $79, $90, $A9, $C4, $E1
+.db $00, $21, $44, $69, $90, $B9, $E4, $11, $40, $71, $A4, $D9, $10, $49, $84, $C1
+.db $00, $41, $84, $C9, $10, $59, $A4, $F1, $40, $91, $E4, $39, $90, $E9, $44, $A1
+.db $00, $61, $C4, $29, $90, $F9, $64, $D1, $40, $B1, $24, $99, $10, $89, $04, $81
+.db $00, $81, $04, $89, $10, $99, $24, $B1, $40, $D1, $64, $F9, $90, $29, $C4, $61
+.db $00, $A1, $44, $E9, $90, $39, $E4, $91, $40, $F1, $A4, $59, $10, $C9, $84, $41
+.db $00, $C1, $84, $49, $10, $D9, $A4, $71, $40, $11, $E4, $B9, $90, $69, $44, $21
+.db $00, $E1, $C4, $A9, $90, $79, $64, $51, $40, $31, $24, $19, $10, $09, $04, $01
+.db $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00
+.db $01, $01, $01, $01, $01, $01, $01, $02, $02, $02, $02, $02, $03, $03, $03, $03
+.db $04, $04, $04, $04, $05, $05, $05, $05, $06, $06, $06, $07, $07, $07, $08, $08
+.db $09, $09, $09, $0A, $0A, $0A, $0B, $0B, $0C, $0C, $0D, $0D, $0E, $0E, $0F, $0F
+.db $10, $10, $11, $11, $12, $12, $13, $13, $14, $14, $15, $15, $16, $17, $17, $18
+.db $19, $19, $1A, $1A, $1B, $1C, $1C, $1D, $1E, $1E, $1F, $20, $21, $21, $22, $23
+.db $24, $24, $25, $26, $27, $27, $28, $29, $2A, $2B, $2B, $2C, $2D, $2E, $2F, $30
+.db $31, $31, $32, $33, $34, $35, $36, $37, $38, $39, $3A, $3B, $3C, $3D, $3E, $3F
+.db $40, $3F, $3E, $3D, $3C, $3B, $3A, $39, $38, $37, $36, $35, $34, $33, $32, $31
+.db $31, $30, $2F, $2E, $2D, $2C, $2B, $2B, $2A, $29, $28, $27, $27, $26, $25, $24
+.db $24, $23, $22, $21, $21, $20, $1F, $1E, $1E, $1D, $1C, $1C, $1B, $1A, $1A, $19
+.db $19, $18, $17, $17, $16, $15, $15, $14, $14, $13, $13, $12, $12, $11, $11, $10
+.db $10, $0F, $0F, $0E, $0E, $0D, $0D, $0C, $0C, $0B, $0B, $0A, $0A, $0A, $09, $09
+.db $09, $08, $08, $07, $07, $07, $06, $06, $06, $05, $05, $05, $05, $04, $04, $04
+.db $04, $03, $03, $03, $03, $02, $02, $02, $02, $02, $01, $01, $01, $01, $01, $01
+.db $01, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00
 InvLUT:
 .db $ff
 .repeat 255 index x
@@ -1579,17 +1688,17 @@ VBData:
 .incbin "vb.sms" fsize VBSize
 
 VBInitX:
-.dsb 4, 96
-.dsb 4, 160
+.dsb 4, -32
+.dsb 4, 32
 VBInitY:
 .repeat 2
-    .dsb 2, 64
-    .dsb 2, 128
+    .dsb 2, -32
+    .dsb 2, 32
 .endr
 VBInitZ:
 .repeat 4
-    .db 96
-    .db 160
+    .db -32
+    .db 32
 .endr    
 
 .bank 0 slot 0
