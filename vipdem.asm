@@ -317,7 +317,7 @@ main:
     ld (CurFrameIdx + $01), a
 
     ; default effect
-    ld a, 3
+    ld a, 2
     ld (CurEffect), a
 
 Reinit:
@@ -441,7 +441,10 @@ p0:
     jp nz, +
         ld a, (CurEffect)
         inc a
-        and 3
+        cp 3
+        jp nz, ++
+        xor a
+    ++:
         ld (CurEffect), a
         jp Reinit
         
