@@ -785,12 +785,43 @@ RotoPrecalcEnd:
     ; main loop on lines pairs
 
 RotoLineLoop:
+    .ifneq RotoColumnCount 32
+        ; VRAM pointer position
+        ex de, hl
+        ld a, RotoLineCount
+        sub e
+        ld l, a
+        ld h, 0
+        ;line index to vram offset (line * 64)
+        add hl, hl
+        add hl, hl
+        add hl, hl
+        add hl, hl
+        add hl, hl
+        add hl, hl
+        dec hl
+        ld a, l
+        out (VDPControl), a
+        
+        ld a, (CurFrameIdx)
+        rrca    
+        ld a, h
+        jr nc, +
+        add a, $08
+    +:    
+        add a, >VRAMWrite + $30
+        out (VDPControl), a
+        ex de, hl
+    .endif
+    
     ld a, l
     dec a
     add a, a
     add a, a
     exx
     RotoGetLineOffsets
+    
+    
 
     jp RAMCode
 RotoRAMCodeStart:
@@ -807,13 +838,6 @@ RotoRAMCodeStart:
 RotoRAMCodeEnd:
     jp RotoRAMCodeRet
 RotoRAMCodeRet:
-
-    ld c, VDPData
-    .repeat (32 - RotoColumnCount) * 2
-        nop
-        inc iy
-        in (c)
-    .endr
 
     exx
     
@@ -1022,7 +1046,7 @@ PM7LineLoop:
     ; VRAM pointer position
     push hl
     dec l
-    ;line index to vram offset ((line - 1) * 64)
+    ;line index to vram offset (line * 64)
     add hl, hl
     add hl, hl
     add hl, hl
