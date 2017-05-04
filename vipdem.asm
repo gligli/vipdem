@@ -59,7 +59,7 @@ banks 4
 .define VBCount 8
 .define VBOriginX HalfWidth
 .define VBOriginY HalfHeight
-.define VBOriginZ (-64)
+.define VBOriginZ (-72)
 
 ;==============================================================
 ; Utility macros
@@ -981,12 +981,10 @@ VBLoop:
     
     ld a, c
     call FPMultiplySignedAByDE
-    add hl, hl
 
     ld a, b ; py
     ld b, h ; px
     call FPMultiplySignedAByDE
-    add hl, hl
 
     ; add x / y 2d origin
     
@@ -1030,7 +1028,6 @@ VBLoop:
 
     ; sat index (z)
     ld a, d
-    rrca
     rrca
     ld d, $3c
     and d
@@ -1635,13 +1632,13 @@ SSqrLUT:
     .db >((x - 128) ^ 2)
 .endr
 InvLUT:
-.db 0
+.db $00
 .repeat 255 index x
-    .db <(65535 / (x + 1))
+    .db <(32767 / (x + 1))
 .endr
-.db 0
+.db $00
 .repeat 255 index x
-    .db >(65535 / (x + 1))
+    .db >(32767 / (x + 1))
 .endr
 SinLUT:
 .dbsin 0, 255, 360 / 256, 127.999, 0
@@ -1689,29 +1686,30 @@ MonoFBData:
 VBData:
 .incbin "vb.sms" fsize VBSize
 
-.define sz 32
+.define nsz (-32)
+.define sz 31
 
 VBInitX:
-.dsb 4, -sz
+.dsb 4, nsz
 .dsb 4, sz
-.dsb 4, -sz / 2
+.dsb 4, nsz / 2
 .dsb 4, sz / 2
 VBInitY:
 .repeat 2
-    .dsb 2, -sz
+    .dsb 2, nsz
     .dsb 2, sz
 .endr
 .repeat 2
-    .dsb 2, -sz / 2
+    .dsb 2, nsz / 2
     .dsb 2, sz / 2
 .endr
 VBInitZ:
 .repeat 4
-    .db -sz
+    .db nsz
     .db sz
 .endr    
 .repeat 4
-    .db -sz / 2
+    .db nsz / 2
     .db sz / 2
 .endr    
 
