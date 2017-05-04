@@ -1133,20 +1133,31 @@ VBLoop:
     ld (hl), c
     inc l
 
-    ; sat index (z)
+    ; sat tile index
     ld a, b
     ld d, $3c
     and d
     rrca
     ld c, a
 
+    ; stretch effect
     ld a, (CurFrameIdx)
-    rlca
+    add a, a
     sub c
-    cpl
-    rlca
-    and $60
+    add a, a
+    add a, a
     
+    jp m, +
+    xor a
+    jp ++
++:    
+    ld d, >SSqrLUT + 1
+    ld e, a
+    ld a, (de)
+    add a, a
+    and $64
+    
+++:
     add a, c
     ld (hl), a
 
