@@ -60,7 +60,6 @@ banks 4
 .define VBOriginX HalfWidth
 .define VBOriginY HalfHeight
 .define VBOriginZ (-64)
-.define VBFov 0.75
 
 ;==============================================================
 ; Utility macros
@@ -758,8 +757,8 @@ FPMultiplySignedBByC:
 ; Destroys: abcdefhl
 ;
 VBSATSort:
-    ld bc, VBSAT + $81
-    ld de, VBSAT + $81 + (VBCount * 2 - 1) * 2
+    ld bc, VBSAT + $40
+    ld de, VBSAT + $40 + (VBCount - 1)
 qsort:
     ld hl,0
     push hl
@@ -781,19 +780,15 @@ next1:
     ld a,(bc)  ;pivot
     ld h,a
     dec c
-    dec c
-    inc e
     inc e
 fleft:
     inc c      ;do i++ while cur>piv
-    inc c
     ld a,(bc)
     ld l,a
     ld a,h
     cp l
     jp c,fleft
 fright:
-    dec e      ;do i-- while cur<piv
     dec e
     ld a,(de)
     cp h
@@ -808,19 +803,7 @@ fright:
     ld l, c
     ld ixl, e
     
-    ;swap tile index
-
-    ld a,(bc)
-    ld h,a
-    ld a,(de)
-    ld (bc),a
-    ld a,h
-    ld (de),a
-
-    ;swap x
-    
-    dec c
-    dec e
+    ;swap z
     
     ld a,(bc)
     ld h,a
@@ -831,10 +814,8 @@ fright:
 
     ; swap y
     
-    res 7, c
-    res 7, e
-    srl c
-    srl e
+    res 6, c
+    res 6, e
     
     ld a,(bc)
     ld h,a
@@ -843,6 +824,32 @@ fright:
     ld a,h
     ld (de),a
   
+    ;swap x
+    
+    sla c
+    sla e
+    set 7, c
+    set 7, e    
+   
+    ld a,(bc)
+    ld h,a
+    ld a,(de)
+    ld (bc),a
+    ld a,h
+    ld (de),a
+    
+    ;swap tile index
+
+    inc c
+    inc e
+
+    ld a,(bc)
+    ld h,a
+    ld a,(de)
+    ld (bc),a
+    ld a,h
+    ld (de),a
+    
     ld c, l
     ld e, ixl
 
@@ -889,14 +896,14 @@ VectorBallsInit:
     ld bc,VBSize
     CopyToVDP
 
-    ; SAT address ($2800)
-    ld a, $51
+    ; SAT address ($3f00)
+    ld a, $7f
     out (VDPControl), a
     ld a, $85
     out (VDPControl), a
     
     ; SAT terminator
-    ld hl, VBSAT + VBCount * 2
+    ld hl, VBSAT + VBCount
     ld a, $d0
     ld (hl), a
     
@@ -910,7 +917,7 @@ VectorBallsInit:
 VectorBalls:
     ; upload current sat to VDP
     
-    SetVDPAddress $2800 | VRAMWrite
+    SetVDPAddress $3f00 | VRAMWrite
     ld hl, VBSAT
     ld c, VDPData
     .repeat 256
@@ -1108,42 +1115,39 @@ VBLoop:
     
     ex de, hl
     ld e, ixh
-    sla e
+    ; sla e
     ld d, >VBSAT
     ex de, hl
     
     ; sat y
     ld (hl), a
-    inc l
-    ld (hl), a
-    dec l
 
+    ; sat z
+    set 6, l
+    ld (hl), b
+    
     ; sat second part
     sla l
-    set 7, l
 
     ; sat x
     ld (hl), c
     inc l
-    inc l
-    ld a, c
-    add a, 8
-    ld (hl), a
-    dec l
 
     ; sat index (z)
     ld a, b
     ld d, $3c
     and d
-    ; avoid fully transparent version
-    cp d
-    jr nz, +
-    sub 4
-+:    
-    ld (hl), a
-    inc l
-    inc l
-    add a, 2
+    rrca
+    ld c, a
+
+    ld a, (CurFrameIdx)
+    rlca
+    sub c
+    cpl
+    rlca
+    and $60
+    
+    add a, c
     ld (hl), a
 
     inc ixh
@@ -1738,9 +1742,9 @@ SSqrLUT:
     .db >((x - 128) ^ 2)
 .endr
 InvLUT:
-.db $00
+.db $ff
 .repeat 255 index x
-    .db <(65535 *(1 - VBFov) / (x + 1))
+    .db <(16383 / (x + 1))
 .endr
 SinLUT:
 .dbsin 0, 255, 360 / 256, 127.999, 0
@@ -1765,10 +1769,7 @@ LocalPalette:
     .db 16
     .db 47
 .endr
-.db 63, 63, 47, 31,
-.db 11,  7,  3, 19,
-.db  2, 34, 33, 49,
-.db 52, 48, 32, 16,
+.db $00 $20 $30 $38 $32 $32 $03 $03 $23 $0B $33 $0F $2F $3F $3F
     
 SpriteData:
 .repeat 64 index idx
@@ -1786,7 +1787,7 @@ MonoFBData:
 .incbin "MonoFB.bin" fsize MonoFBSize
 
 VBData:
-.incbin "vb.sms" fsize VBSize
+.incbin "vb/vb.sms" fsize VBSize
 
 .define nsz (-36)
 .define sz 35
