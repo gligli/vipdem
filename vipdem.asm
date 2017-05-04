@@ -1154,7 +1154,7 @@ VBLoop:
     ld e, a
     ld a, (de)
     add a, a
-    and $64
+    and $62
     
 ++:
     add a, c
