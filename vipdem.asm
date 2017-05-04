@@ -59,7 +59,7 @@ banks 4
 .define VBCount 8
 .define VBOriginX HalfWidth
 .define VBOriginY HalfHeight
-.define VBOriginZ 96
+.define VBOriginZ (-64)
 
 ;==============================================================
 ; Utility macros
@@ -278,11 +278,11 @@ banks 4
     VBY               dsb 256
     VBZ               dsb 256
     VBSAT             dsb 256
-    VBSinCos          dsb 6
-    VBFactors         dsb 9
     VBRX              db
     VBRY              db
     VBRZ              db
+    VBSinCos          dsb 6
+    VBFactors         dsb 9
 .ende
 
 ;==============================================================
@@ -664,7 +664,7 @@ FPMultiplySignedBByC:
     push bc
     push de
 
-    ld  h, >SMulLUT
+    ld  h, >SSqrLUT
     ld  l,b
     ld  a,b
     ld  e,(hl)
@@ -675,7 +675,7 @@ FPMultiplySignedBByC:
     dec h
     ld  c,(hl)      ; BC = b^2
     add a,l     ; let's try (a + b)
-    jp  pe, @Plus     ; jump if no overflow
+    jp  po, @Plus     ; jump if no overflow
 
     sub l
     sub l
@@ -730,9 +730,7 @@ FPMultiplySignedBByC:
     ; x
     VBGetCFromDE
     ld b, ixl
-    push af
     call FPMultiplySignedBByC
-    pop af
     ld a, h
     ; y
     VBGetCFromDE
@@ -819,11 +817,9 @@ VectorBalls:
         ld c, (hl)
         inc l
         GetSinC
-        sra a
         ld (de), a
         inc e
         GetCosC
-        sra a
         ld (de), a
         inc e
     .endr
@@ -1625,53 +1621,27 @@ PM7LineLoop:
 
 .bank 2 slot 2
 .org $3a00
-SMulLUT:
-.db $00, $01, $04, $09, $10, $19, $24, $31, $40, $51, $64, $79, $90, $A9, $C4, $E1
-.db $00, $21, $44, $69, $90, $B9, $E4, $11, $40, $71, $A4, $D9, $10, $49, $84, $C1
-.db $00, $41, $84, $C9, $10, $59, $A4, $F1, $40, $91, $E4, $39, $90, $E9, $44, $A1
-.db $00, $61, $C4, $29, $90, $F9, $64, $D1, $40, $B1, $24, $99, $10, $89, $04, $81
-.db $00, $81, $04, $89, $10, $99, $24, $B1, $40, $D1, $64, $F9, $90, $29, $C4, $61
-.db $00, $A1, $44, $E9, $90, $39, $E4, $91, $40, $F1, $A4, $59, $10, $C9, $84, $41
-.db $00, $C1, $84, $49, $10, $D9, $A4, $71, $40, $11, $E4, $B9, $90, $69, $44, $21
-.db $00, $E1, $C4, $A9, $90, $79, $64, $51, $40, $31, $24, $19, $10, $09, $04, $01
-.db $00, $01, $04, $09, $10, $19, $24, $31, $40, $51, $64, $79, $90, $A9, $C4, $E1
-.db $00, $21, $44, $69, $90, $B9, $E4, $11, $40, $71, $A4, $D9, $10, $49, $84, $C1
-.db $00, $41, $84, $C9, $10, $59, $A4, $F1, $40, $91, $E4, $39, $90, $E9, $44, $A1
-.db $00, $61, $C4, $29, $90, $F9, $64, $D1, $40, $B1, $24, $99, $10, $89, $04, $81
-.db $00, $81, $04, $89, $10, $99, $24, $B1, $40, $D1, $64, $F9, $90, $29, $C4, $61
-.db $00, $A1, $44, $E9, $90, $39, $E4, $91, $40, $F1, $A4, $59, $10, $C9, $84, $41
-.db $00, $C1, $84, $49, $10, $D9, $A4, $71, $40, $11, $E4, $B9, $90, $69, $44, $21
-.db $00, $E1, $C4, $A9, $90, $79, $64, $51, $40, $31, $24, $19, $10, $09, $04, $01
-.db $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00
-.db $01, $01, $01, $01, $01, $01, $01, $02, $02, $02, $02, $02, $03, $03, $03, $03
-.db $04, $04, $04, $04, $05, $05, $05, $05, $06, $06, $06, $07, $07, $07, $08, $08
-.db $09, $09, $09, $0A, $0A, $0A, $0B, $0B, $0C, $0C, $0D, $0D, $0E, $0E, $0F, $0F
-.db $10, $10, $11, $11, $12, $12, $13, $13, $14, $14, $15, $15, $16, $17, $17, $18
-.db $19, $19, $1A, $1A, $1B, $1C, $1C, $1D, $1E, $1E, $1F, $20, $21, $21, $22, $23
-.db $24, $24, $25, $26, $27, $27, $28, $29, $2A, $2B, $2B, $2C, $2D, $2E, $2F, $30
-.db $31, $31, $32, $33, $34, $35, $36, $37, $38, $39, $3A, $3B, $3C, $3D, $3E, $3F
-.db $40, $3F, $3E, $3D, $3C, $3B, $3A, $39, $38, $37, $36, $35, $34, $33, $32, $31
-.db $31, $30, $2F, $2E, $2D, $2C, $2B, $2B, $2A, $29, $28, $27, $27, $26, $25, $24
-.db $24, $23, $22, $21, $21, $20, $1F, $1E, $1E, $1D, $1C, $1C, $1B, $1A, $1A, $19
-.db $19, $18, $17, $17, $16, $15, $15, $14, $14, $13, $13, $12, $12, $11, $11, $10
-.db $10, $0F, $0F, $0E, $0E, $0D, $0D, $0C, $0C, $0B, $0B, $0A, $0A, $0A, $09, $09
-.db $09, $08, $08, $07, $07, $07, $06, $06, $06, $05, $05, $05, $05, $04, $04, $04
-.db $04, $03, $03, $03, $03, $02, $02, $02, $02, $02, $01, $01, $01, $01, $01, $01
-.db $01, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00
-InvLUT:
-.repeat 256 index x
-    .ifeq x 0
-        .db 0
-    .else
-        .db <(32767 / x)
-    .endif
+SSqrLUT:
+.repeat 128 index x
+    .db <(x ^ 2)
 .endr
-.repeat 256 index x
-    .ifeq x 0
-        .db 0
-    .else
-        .db >(32767 / x)
-    .endif
+.repeat 128 index x
+    .db <((x - 128) ^ 2)
+.endr
+.repeat 128 index x
+    .db >(x ^ 2)
+.endr
+.repeat 128 index x
+    .db >((x - 128) ^ 2)
+.endr
+InvLUT:
+.db 0
+.repeat 255 index x
+    .db <(65535 / (x + 1))
+.endr
+.db 0
+.repeat 255 index x
+    .db >(65535 / (x + 1))
 .endr
 SinLUT:
 .dbsin 0, 255, 360 / 256, 127.999, 0
@@ -1719,18 +1689,30 @@ MonoFBData:
 VBData:
 .incbin "vb.sms" fsize VBSize
 
+.define sz 32
+
 VBInitX:
-.dsb 4, -64
-.dsb 4, 63
+.dsb 4, -sz
+.dsb 4, sz
+.dsb 4, -sz / 2
+.dsb 4, sz / 2
 VBInitY:
 .repeat 2
-    .dsb 2, -64
-    .dsb 2, 63
+    .dsb 2, -sz
+    .dsb 2, sz
+.endr
+.repeat 2
+    .dsb 2, -sz / 2
+    .dsb 2, sz / 2
 .endr
 VBInitZ:
 .repeat 4
-    .db -64
-    .db 63
+    .db -sz
+    .db sz
+.endr    
+.repeat 4
+    .db -sz / 2
+    .db sz / 2
 .endr    
 
 .bank 0 slot 0
