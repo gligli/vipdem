@@ -735,16 +735,16 @@ FPMultiplySignedBByC:
     ; y
     VBGetCFromDE
     ld b, iyl
-    push af
+    ex af, af'
     call FPMultiplySignedBByC
-    pop af
+    ex af, af'
     add a, h
     ; z
     VBGetCFromDE
     ld b, iyh
-    push af
+    ex af, af'
     call FPMultiplySignedBByC
-    pop af
+    ex af, af'
     add a, h
 .endm
 
@@ -1143,8 +1143,7 @@ VBLoop:
     ; stretch effect
     ld a, (CurFrameIdx)
     add a, a
-    sub c
-    add a, a
+    sub b
     add a, a
     
     jp m, +
