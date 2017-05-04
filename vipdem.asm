@@ -59,7 +59,8 @@ banks 4
 .define VBCount 8
 .define VBOriginX HalfWidth
 .define VBOriginY HalfHeight
-.define VBOriginZ (-72)
+.define VBOriginZ (-64)
+.define VBFov 0.75
 
 ;==============================================================
 ; Utility macros
@@ -968,37 +969,34 @@ VBLoop:
     add a, VBOriginZ
     ld l, a
     pop af
-    ld b, a
+    ld e, a
     pop af
     ld c, a
     
     ; project & build SAT
 
     ld h, >InvLUT
-    ld d, (hl) ; 1 / z
-    inc h
-    ld e, (hl)
+    ld b, (hl) ; 1 / z
     
-    ld a, c
-    call FPMultiplySignedAByDE
+    call FPMultiplySignedBByC
+    ld d, h
 
-    ld a, b ; py
-    ld b, h ; px
-    call FPMultiplySignedAByDE
+    ld c, e ; py
+    call FPMultiplySignedBByC
 
     ; add x / y 2d origin
     
-    ld a, b
+    ld a, d
     add a, VBOriginX
     ld c, a
     ld a, h ; py
     add a, VBOriginY
 
     ; don't let sprites y become $d0 (terminator)
-    ld b, 192
-    cp b
+    ld d, 192
+    cp d
     jr c, +
-    ld a, b
+    ld a, d
 +:    
     
     ex de, hl
@@ -1027,8 +1025,7 @@ VBLoop:
     dec l
 
     ; sat index (z)
-    ld a, d
-    rrca
+    ld a, b
     ld d, $3c
     and d
     ; avoid fully transparent version
@@ -1617,7 +1614,7 @@ PM7LineLoop:
 ;==============================================================
 
 .bank 2 slot 2
-.org $3a00
+.org $3b00
 SSqrLUT:
 .repeat 128 index x
     .db <(x ^ 2)
@@ -1634,11 +1631,7 @@ SSqrLUT:
 InvLUT:
 .db $00
 .repeat 255 index x
-    .db <(32767 / (x + 1))
-.endr
-.db $00
-.repeat 255 index x
-    .db >(32767 / (x + 1))
+    .db <(65535 *(1 - VBFov) / (x + 1))
 .endr
 SinLUT:
 .dbsin 0, 255, 360 / 256, 127.999, 0
@@ -1686,8 +1679,8 @@ MonoFBData:
 VBData:
 .incbin "vb.sms" fsize VBSize
 
-.define nsz (-32)
-.define sz 31
+.define nsz (-36)
+.define sz 35
 
 VBInitX:
 .dsb 4, nsz
