@@ -56,7 +56,7 @@ banks 4
 .define PM7LineCount 12
 .define PM7Fov 0.75
 
-.define VBCount 8
+.define VBCount 16
 .define VBOriginX HalfWidth
 .define VBOriginY HalfHeight
 .define VBOriginZ (-64)
@@ -749,6 +749,113 @@ FPMultiplySignedBByC:
     add a, h
 .endm
 
+;
+; >>> Quicksort routine v1.1 <<<
+; by Frank Yaul 7/14/04 (modified to sort SATs by GliGli)
+;
+; Usage: bc->first, de->last,
+;        call qsort
+; Destroys: abcdefhl
+;
+VBSATSort:
+    ld bc, VBSAT + $81
+    ld de, VBSAT + $81 + (VBCount * 2 - 1) * 2
+qsort:
+    ld hl,0
+    push hl
+qsloop:
+    ld h,b
+    ld l,c
+    or a
+    sbc hl,de
+    jp c,next1 ;loop until lo<hi
+    pop bc
+    ld a,b
+    or c
+    ret z       ;bottom of stack
+    pop de
+    jp qsloop
+next1:
+    push de      ;save hi,lo
+    push bc
+    ld a,(bc)  ;pivot
+    ld h,a
+    dec c
+    dec c
+    inc e
+    inc e
+fleft:
+    inc c      ;do i++ while cur>piv
+    inc c
+    ld a,(bc)
+    ld l,a
+    ld a,h
+    cp l
+    jp c,fleft
+fright:
+    dec e      ;do i-- while cur<piv
+    dec e
+    ld a,(de)
+    cp h
+    jp c,fright
+    push hl      ;save pivot
+    ld h,d     ;exit if lo>hi
+    ld l,e
+    or a
+    sbc hl,bc
+    jp c,next2
+    
+    ld l, c
+    ld ixl, e
+    
+    ;swap tile index
+
+    ld a,(bc)
+    ld h,a
+    ld a,(de)
+    ld (bc),a
+    ld a,h
+    ld (de),a
+
+    ;swap x
+    
+    dec c
+    dec e
+    
+    ld a,(bc)
+    ld h,a
+    ld a,(de)
+    ld (bc),a
+    ld a,h
+    ld (de),a
+
+    ; swap y
+    
+    res 7, c
+    res 7, e
+    srl c
+    srl e
+    
+    ld a,(bc)
+    ld h,a
+    ld a,(de)
+    ld (bc),a
+    ld a,h
+    ld (de),a
+  
+    ld c, l
+    ld e, ixl
+
+    pop hl      ;restore pivot
+    jp fleft
+next2:
+    pop hl      ;restore pivot
+    pop hl      ;pop lo
+    push bc      ;stack=left-hi
+    ld b,h
+    ld c,l     ;bc=lo,de=right
+    jp qsloop
+
 VectorBallsInit:
     ; clear XYZ
     ld hl, $c100
@@ -1043,6 +1150,8 @@ VBLoop:
     ld a, ixh
     cp VBCount
     jp nz, VBLoop
+    
+    call VBSATSort
 
     ret
     
