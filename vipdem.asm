@@ -40,6 +40,7 @@ banks 4
 .define TileSize 32
 .define TileMapSize 1536
 .define TilePaletteSize 16
+.define VDPPaletteSize 32
 .define BankSize_ 16384
 .define Width 256
 .define Height 192
@@ -328,8 +329,6 @@ main:
 
     memset $c000, 0, $2000
 
-Reinit:
-
     ; this maps the first 48K of ROM to $0000-$BFFF
     memcpy $fffc, init_tab, $0004
    
@@ -353,11 +352,8 @@ Reinit:
     or c
     jr nz, -
 
-    ; dummy Sprite table
-    SetVDPAddress $2800 | VRAMWrite
-    ld a, $d0
-    out (VDPData), a
-
+    call SetDummySpriteTable
+    
     ; load tiles (Monochrome framebuffer emulation)
     SetVDPAddress $0000 | VRAMWrite
     ld hl,MonoFBData
@@ -369,8 +365,9 @@ Reinit:
     ld bc,(PSGInitDataEnd-PSGInitData)<<8 + PSGPort
     otir
 
-    memcpy LocalPalette, RotoPalette, 32
-    call UploadPalette
+Reinit:
+    ; this maps the first 48K of ROM to $0000-$BFFF
+    memcpy $fffc, init_tab, $0004
     
     in a, (VDPControl) ; ack any previous int
     
@@ -387,10 +384,18 @@ Reinit:
     ld a, $81
     out (VDPControl), a
 
-    ; Effect init
-    
-    call CurEffectInit
+    ; tmp delay
+    ld b, 8
+-:
+    WaitVBlank 0
+    djnz -
 
+    memcpy LocalPalette, RotoPalette, 32
+    call UploadPalette
+    
+    ; Effect init
+    call CurEffectInit
+    
 ;==============================================================
 ; Main loop
 ;==============================================================
@@ -420,6 +425,7 @@ p0:
     ld c, a
     bit 5, c
     jp nz, +
+        call CurEffectFinalize
         ld a, (CurEffect)
         inc a
         cp (EffectsEnd-Effects) / 4
@@ -679,10 +685,30 @@ FPMultiplySignedBByC:
     
     ret
     
+NullSub:
+    ret
+    
 CurEffectInit:
     ld h, >Effects
     ld a, (CurEffect)
     add a, a
+    add a, a
+    inc a
+    add a, a
+    ld l, a
+    ld e, (hl)
+    inc l
+    ld d, (hl)
+    ex de, hl
+    jp (hl)
+    
+CurEffectFinalize:
+    ld h, >Effects
+    ld a, (CurEffect)
+    add a, a
+    add a, a
+    inc a
+    inc a
     add a, a
     ld l, a
     ld e, (hl)
@@ -695,7 +721,7 @@ CurEffectUpdate:
     ld h, >Effects
     ld a, (CurEffect)
     add a, a
-    inc a
+    add a, a
     add a, a
     ld l, a
     ld e, (hl)
@@ -708,9 +734,92 @@ UploadPalette:
     ld c, VDPData
     SetVDPAddress $0000 | CRAMWrite
     ld hl, LocalPalette
-    .repeat 32
+    .repeat VDPPaletteSize
         outi
     .endr
+    
+    ret
+    
+    
+SetDummySpriteTable:
+    ; dummy Sprite table
+    SetVDPAddress $3f00 | VRAMWrite
+    ld a, $d0
+    out (VDPData), a
+    
+    ret
+    
+ClearTileMap:
+    ; TODO: improve me
+    
+    SetVDPAddress $3800 | VRAMWrite
+    ld bc, TileMapSize
+-:  xor a
+    out (VDPData), a
+    dec bc
+    ld a, b
+    or c
+    jr nz, -
+    
+    SetVDPAddress $3000 | VRAMWrite
+    ld bc, TileMapSize
+-:  xor a
+    out (VDPData), a
+    dec bc
+    ld a, b
+    or c
+    jr nz, -
+
+    ret
+    
+;==============================================================
+; Fadeout code
+;==============================================================
+
+FadeoutLocalPalette:
+    ld hl, LocalPalette
+    ld b, VDPPaletteSize
+-:
+    ld c, (hl)
+    
+    ; green first
+    ld a, c
+    and $0c
+    jr z, +
+    ld a, c
+    sub $04
+    jp ++
++:    
+    ; then red
+    ld a, c
+    and $03
+    jr z, +
+    ld a, c
+    dec a
+    jp ++
++:    
+    ; then blue
+    ld a, c
+    and $30
+    jr z, +
+    ld a, c
+    sub $10
++:    
+++:    
+    
+    ld (hl), a
+
+    inc hl    
+    djnz -
+    
+    ret
+    
+Fadeout:
+    ld a, (CurFrameIdx)
+    and $03
+    ret nz
+    call FadeoutLocalPalette
+    jp UploadPalette
     
 ;==============================================================
 ; VectorBalls code
@@ -1720,12 +1829,31 @@ PM7LineLoop:
 
 .org $3a00
 Effects:
-.dw VectorBallsInit
 .dw VectorBalls
-.dw RotoZoomInit
+.dw VectorBallsInit
+.dw NullSub
+.dw 0
+
+.dw Fadeout
+.dw NullSub
+.dw SetDummySpriteTable
+.dw 0
+
 .dw RotoZoomMonoFB
-.dw PseudoMode7Init
+.dw RotoZoomInit
+.dw ClearTileMap
+.dw 0
+
 .dw PseudoMode7MonoFB
+.dw PseudoMode7Init
+.dw NullSub
+.dw 0
+
+.dw Fadeout
+.dw NullSub
+.dw ClearTileMap
+.dw 0
+
 EffectsEnd:
 
 .org $3b00
