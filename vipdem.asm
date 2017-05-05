@@ -1779,7 +1779,7 @@ LocalPalette:
     .db 16
     .db 47
 .endr
-.db $00 $20 $30 $38 $32 $32 $03 $03 $23 $0B $33 $0F $2F $3F $3F
+.db $00 $10 $20 $34 $21 $31 $02 $03 $13 $07 $22 $0B $1F $2F $3F
     
 SpriteData:
 .repeat 64 index idx
