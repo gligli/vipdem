@@ -404,22 +404,15 @@ p0:
     inc a
     ld (CurFrameIdx), a
 
-    ; VRAM tilemap address
+    ; VDP tilemap pointer (double buffering)
     and 1
-    jp z, +
-    ld a, $fd
-    out (VDPControl), a
-    ld a, $82
-    out (VDPControl), a
-    SetVDPAddress $37ff | VRAMWrite
-    jp ++
-+:
     ld a, $ff
+    jr z, +
+    ld a, $fd
++:
     out (VDPControl), a
     ld a, $82
     out (VDPControl), a
-    SetVDPAddress $2fff | VRAMWrite
-++:
 
     ; Effect switcher
     
@@ -429,7 +422,7 @@ p0:
     jp nz, +
         ld a, (CurEffect)
         inc a
-        cp 3
+        cp (EffectsEnd-Effects) / 4
         jp nz, ++
         xor a
     ++:
@@ -1733,6 +1726,7 @@ Effects:
 .dw RotoZoomMonoFB
 .dw PseudoMode7Init
 .dw PseudoMode7MonoFB
+EffectsEnd:
 
 .org $3b00
 SSqrLUT:
