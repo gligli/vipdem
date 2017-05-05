@@ -316,15 +316,6 @@ main:
     ld (hl), a
     ldir
 
-    ; init current frame idx
-    xor a
-    ld (CurFrameIdx), a
-    ld (CurFrameIdx + $01), a
-
-    ; default effect
-    ld a, 2
-    ld (CurEffect), a
-
 Reinit:
 
     ; this maps the first 48K of ROM to $0000-$BFFF
@@ -394,19 +385,7 @@ Reinit:
 
     ; Effect init
     
-    ld a, (CurEffect)
-    or a
-    jp nz, +
-    call RotoZoomInit
-    jp ++
-+:
-    dec a
-    jp nz, +
-    call PseudoMode7Init
-    jp ++
-+:
-    call VectorBallsInit
-++:    
+    call CurEffectInit
 
 ;==============================================================
 ; Main loop
@@ -455,7 +434,7 @@ p0:
         
 +:
     ld a, (CurEffect)
-    cp 2
+    or a
     jp z, ++
 
     ; Roto / PM7 controls
@@ -532,19 +511,7 @@ p0:
 +:   
     
 p1:
-
-    ld a, (CurEffect)
-    or a
-    jp nz, +
-    call RotoZoomMonoFB
-    jp MainLoop
-+:
-    dec a
-    jp nz, +
-    call PseudoMode7MonoFB
-    jp MainLoop
-+:
-    call VectorBalls
+    call CurEffectUpdate
     jp MainLoop
     
 ;==============================================================
@@ -713,8 +680,33 @@ FPMultiplySignedBByC:
     pop de
     pop bc
     
-    ret    
+    ret
     
+CurEffectInit:
+    ld h, >Effects
+    ld a, (CurEffect)
+    add a, a
+    add a, a
+    ld l, a
+    ld e, (hl)
+    inc l
+    ld d, (hl)
+    ex de, hl
+    jp (hl)
+    
+CurEffectUpdate:
+    ld h, >Effects
+    ld a, (CurEffect)
+    add a, a
+    inc a
+    add a, a
+    ld l, a
+    ld e, (hl)
+    inc l
+    ld d, (hl)
+    ex de, hl
+    jp (hl)
+
 ;==============================================================
 ; VectorBalls code
 ;==============================================================
@@ -1737,6 +1729,16 @@ PM7LineLoop:
 ;==============================================================
 
 .bank 2 slot 2
+
+.org $3a00
+Effects:
+.dw VectorBallsInit
+.dw VectorBalls
+.dw RotoZoomInit
+.dw RotoZoomMonoFB
+.dw PseudoMode7Init
+.dw PseudoMode7MonoFB
+
 .org $3b00
 SSqrLUT:
 .repeat 128 index x
