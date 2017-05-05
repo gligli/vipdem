@@ -243,6 +243,22 @@ banks 4
     .endif
 .endm
 
+.macro memcpy args dest, src, len
+    ld de, dest
+    ld hl, src
+    ld bc, len
+    ldir
+.endm
+
+.macro memset args dest, val, len
+    ld hl, dest
+    ld de, dest + 1
+    ld bc, len
+    ld a, val
+    ld (hl), a
+    ldir
+.endm
+
 ;==============================================================
 ; RAM variables
 ;==============================================================
@@ -252,6 +268,7 @@ banks 4
     CurFrameIdx       dw
     SPSave            dw
     CurEffect         db
+    LocalPalette      dsb 32
 .ende
 
 ; RotoZoom / PseudoMode7
@@ -309,20 +326,12 @@ main:
 
     ; clear RAM
 
-    ld hl, $c000
-    ld de, $c001
-    ld bc, $2000
-    xor a
-    ld (hl), a
-    ldir
+    memset $c000, 0, $2000
 
 Reinit:
 
     ; this maps the first 48K of ROM to $0000-$BFFF
-    ld de, $FFFC
-    ld hl, init_tab
-    ld bc, $0004
-    ldir
+    memcpy $fffc, init_tab, $0004
    
     ; set up VDP registers
 
@@ -360,14 +369,9 @@ Reinit:
     ld bc,(PSGInitDataEnd-PSGInitData)<<8 + PSGPort
     otir
 
-    ld c, VDPData
-    SetVDPAddress $0000 | CRAMWrite
-    ld hl, LocalPalette
-    .repeat 32
-        outi
-        inc iy
-    .endr
-
+    memcpy LocalPalette, RotoPalette, 32
+    call UploadPalette
+    
     in a, (VDPControl) ; ack any previous int
     
     ; turn screen on
@@ -707,6 +711,14 @@ CurEffectUpdate:
     ex de, hl
     jp (hl)
 
+UploadPalette:
+    ld c, VDPData
+    SetVDPAddress $0000 | CRAMWrite
+    ld hl, LocalPalette
+    .repeat 32
+        outi
+    .endr
+    
 ;==============================================================
 ; VectorBalls code
 ;==============================================================
@@ -856,31 +868,14 @@ next2:
     jp qsloop
 
 VectorBallsInit:
-    ; clear XYZ
-    ld hl, $c100
-    ld de, $c101
-    ld bc, $0300
-    xor a
-    ld (hl), a
-    ldir
-
     ; init X
-    ld hl, VBInitX
-    ld de, VBX
-    ld bc, VBCount
-    ldir
+    memcpy VBX, VBInitX, VBCount
 
     ; init Y
-    ld hl, VBInitY
-    ld de, VBY
-    ld bc, VBCount
-    ldir
+    memcpy VBY, VBInitY, VBCount
     
     ; init Z
-    ld hl, VBInitZ
-    ld de, VBZ
-    ld bc, VBCount
-    ldir
+    memcpy VBZ, VBInitZ, VBCount
 
     ; load tiles (VectorBalls)
     SetVDPAddress $2000 | VRAMWrite
@@ -1774,13 +1769,14 @@ VDPInitData:
 .db $14,$80,$00,$81,$ff,$82,$51,$85,$ff,$86,$ff,$87,$00,$88,$00,$89,$ff,$8a
 VDPInitDataEnd:
 
-LocalPalette:
+RotoPalette:
 .repeat 4
     .db 1
     .db 27
     .db 16
     .db 47
 .endr
+VBPalette:
 .db $00 $10 $20 $34 $21 $31 $02 $03 $13 $07 $22 $0B $1F $2F $3F
     
 SpriteData:
