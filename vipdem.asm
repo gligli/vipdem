@@ -67,10 +67,10 @@ banks 16
 ;==============================================================
 
 .macro WaitVBlank args playSmp ; c11
-    in a, (VDPControl)
-
+    xor a 
+    ld (HadVBlank), a
 ---:
-    in a, (VDPControl)
+    ld a, (HadVBlank)
     .ifeq playSmp 1
         .repeat 10
             inc iy
@@ -266,9 +266,14 @@ banks 16
 
 ; Global variables
 .enum $c000 export
+    CurBeatIdx        dw
     CurFrameIdx       dw
     SPSave            dw
+    MusicPtr          dw 
+    MusicBank         db
+    MusicFrameWait    db
     CurEffect         db
+    HadVBlank         db  
     LocalPalette      dsb 32
 .ende
 
@@ -310,7 +315,14 @@ banks 16
 .bank 2 slot 2
 .org $0000
 interrupt:
+    push af
+    push hl
     in a, (VDPControl) ;ack vdp int
+    and $80
+    ld (HadVBlank), a
+    call m, MusicUpdate
+    pop hl
+    pop af
     ei
     ret
 
@@ -360,15 +372,6 @@ main:
     ld bc,MonoFBSize
     CopyToVDP
 
-    ; init PSG
-    ld hl,PSGInitData
-    ld bc,(PSGInitDataEnd-PSGInitData)<<8 + PSGPort
-    otir
-
-Reinit:
-    ; this maps the first 48K of ROM to $0000-$BFFF
-    memcpy $fffc, init_tab, $0004
-    
     in a, (VDPControl) ; ack any previous int
     
     ; turn screen on
@@ -383,7 +386,15 @@ Reinit:
     out (VDPControl), a
     ld a, $81
     out (VDPControl), a
+    
+    call MusicInit
+    
+    ei
 
+Reinit:
+    ; this maps the first 48K of ROM to $0000-$BFFF
+    memcpy $fffc, init_tab, $0004
+    
     ; tmp delay
     ld b, 8
 -:
@@ -772,6 +783,93 @@ ClearTileMap:
 
     ret
     
+;==============================================================
+; Music code
+;==============================================================
+
+.macro MusicGetByte
+    ld a, (hl)
+    inc hl
+    bit 7, h
+    jp z, +++
+    ld b, a
+    ld hl, $4000
+    ld a, (MusicBank)
+    inc a
+    ld (MusicBank), a
+    ld (MapperSlot1), a
+    ld a, b
++++:
+.endm
+    
+MusicInit:
+    ; init PSG
+    ld hl,PSGInitData
+    ld bc,(PSGInitDataEnd-PSGInitData)<<8 + PSGPort
+    otir
+
+    ld hl, $4000
+    ld (MusicPtr), hl
+    ld a, 4
+    ld (MusicBank), a
+    ld a, 1
+    ld (MusicFrameWait), a
+    
+    ret
+
+MusicUpdate:
+    push bc
+    push de
+    ld a, (MapperSlot1)
+    ld c, a
+    ld a, (MusicBank)
+    ld (MapperSlot1), a     
+    ld hl, (MusicPtr)
+    
+    ld a, (MusicFrameWait)
+    or a
+    jp z, @Return ; termination is MusicFrameWait = 0
+    dec a
+    ld (MusicFrameWait), a
+    jp nz, @Return
+-:    
+    MusicGetByte
+    bit 4, a ; "Wait" command ?
+    jp z, +
+    ; "PSG" command
+    MusicGetByte
+    out (PSGPort), a
+    jp -
++:
+    ld b, 0
+    cp $66 ; "Termination" command
+    jr z, +
+    inc b
+    cp $63 ; "Wait frame" command?
+    jp z, +
+    ; "Wait samples" command
+    MusicGetByte
+    ld e, a
+    MusicGetByte
+    ld d, a
+    ld a, 75 ; ~= 65536/882 (882 samples per frame)
+    push hl
+    call MultiplyUnsignedAByDE
+    pop hl
+    ld b, a
++:    
+    ld a, b
+    ld (MusicFrameWait), a
+    
+@Return:    
+
+    ld (MusicPtr), hl
+    ld a, c
+    ld (MapperSlot1), a
+    pop de
+    pop bc
+    ret
+
 ;==============================================================
 ; Fadeout code
 ;==============================================================
