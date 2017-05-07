@@ -11,9 +11,9 @@ slot 2 $8000
 .endme
 
 .rombankmap
-bankstotal 4
+bankstotal 16
 banksize $4000
-banks 4
+banks 16
 .endro
 
 ;==============================================================
@@ -1959,3 +1959,27 @@ rst 0
 .bank 3 slot 1
 .org $0000
 .incbin "anim_128_1/fixed.bin" skip $4000 read $4000
+.bank 4 slot 1
+.org $0000
+.incbin "psg/2un_57.vgm" skip $40 read $4000
+.bank 5 slot 1
+.org $0000
+.incbin "psg/2un_57.vgm" skip $4040
+.bank 6 slot 1
+.org $0000
+.incbin "psg/psg.bin" read $4000
+.bank 7 slot 1
+.org $0000
+.incbin "psg/psg.bin" skip $04000 read $4000
+.bank 8 slot 1
+.org $0000
+.incbin "psg/psg.bin" skip $08000 read $4000
+.bank 9 slot 1
+.org $0000
+.incbin "psg/psg.bin" skip $0c000 read $4000
+.bank 10 slot 1
+.org $0000
+.incbin "psg/psg.bin" skip $10000 read $4000
+.bank 11 slot 1
+.org $0000
+.incbin "psg/psg.bin" skip $14000
