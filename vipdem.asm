@@ -439,7 +439,7 @@ p0:
         call CurEffectFinalize
         ld a, (CurEffect)
         inc a
-        cp (EffectsEnd-Effects) / 4
+        cp (EffectsEnd-Effects) / 8
         jp nz, ++
         xor a
     ++:
@@ -792,13 +792,13 @@ ClearTileMap:
     inc hl
     bit 7, h
     jp z, +++
-    ld b, a
+    ld c, a
     ld hl, $4000
     ld a, (MusicBank)
     inc a
     ld (MusicBank), a
     ld (MapperSlot1), a
-    ld a, b
+    ld a, c
 +++:
 .endm
     
@@ -821,7 +821,7 @@ MusicUpdate:
     push bc
     push de
     ld a, (MapperSlot1)
-    ld c, a
+    ld b, a
     ld a, (MusicBank)
     ld (MapperSlot1), a     
     ld hl, (MusicPtr)
@@ -841,10 +841,10 @@ MusicUpdate:
     out (PSGPort), a
     jp -
 +:
-    ld b, 0
+    ld c, 0
     cp $66 ; "Termination" command
     jr z, +
-    inc b
+    inc c
     cp $63 ; "Wait frame" command?
     jp z, +
     ; "Wait samples" command
@@ -856,15 +856,15 @@ MusicUpdate:
     push hl
     call MultiplyUnsignedAByDE
     pop hl
-    ld b, a
+    ld c, a
 +:    
-    ld a, b
+    ld a, c
     ld (MusicFrameWait), a
     
 @Return:    
 
     ld (MusicPtr), hl
-    ld a, c
+    ld a, b
     ld (MapperSlot1), a
     pop de
     pop bc
