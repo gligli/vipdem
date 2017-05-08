@@ -1185,7 +1185,6 @@ VectorBalls:
         outi
     .endr
 
-VectorBallsNoUpload:
     ; get sin / cos of angles
     
     ld de, VBSinCos
@@ -1403,7 +1402,7 @@ VBLoop:
     ld c, a
 
     ; stretch effect
-    ld a, (CurFrameIdx)
+    ld a, (BeatCounter)
     add a, a
     sub b
     add a, a
@@ -1430,12 +1429,6 @@ VBLoop:
     call VBSATSort
 
     ret
-
-VectorBallsInitOneUpdate
-    call VectorBallsInit
-    call VectorBallsNoUpload
-    WaitVBlank 0
-    jp VectorBalls
 
 ;==============================================================
 ; RotoZoom code
@@ -2009,7 +2002,7 @@ PM7LineLoop:
 .org $3a00
 Effects:
 .dw Fadein
-.dw VectorBallsInitOneUpdate
+.dw NullSub
 .dw NullSub
 .dw 0
 
