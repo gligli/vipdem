@@ -451,7 +451,7 @@ p0:
         
 +:
     ld a, (CurEffect)
-    or a
+    cp 1
     jp z, ++
 
     ; Roto / PM7 controls
@@ -2062,6 +2062,7 @@ SinLUT:
 CosLUT:
 .dbcos 0, 255, 360 / 256, 127.999, 0
 
+;==============================================================
 .bank 1 slot 1
 .org $0000
 
@@ -2128,6 +2129,7 @@ VBInitZ:
     .db sz / 2
 .endr    
 
+;==============================================================
 .bank 0 slot 0
 .org $0000
 jp main
@@ -2138,6 +2140,8 @@ jp interrupt
 .org $0066
 rst 0
 .incbin "anim_128_1/fixed.bin" skip $67 read $3f99
+
+;==============================================================
 .bank 3 slot 1
 .org $0000
 .incbin "anim_128_1/fixed.bin" skip $4000 read $4000
