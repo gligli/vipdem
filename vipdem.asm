@@ -1403,6 +1403,8 @@ VBLoop:
 
     ; stretch effect
     ld a, (BeatCounter)
+    sub 16
+    
     add a, a
     sub b
     add a, a
