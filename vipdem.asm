@@ -57,6 +57,9 @@ banks 16
 .define PM7LineCount 12
 .define PM7Fov 0.75
 
+.define PartOriginY 32
+.define PartInitialBeatWait 2
+
 .define VBCount 16
 .define VBOriginX HalfWidth
 .define VBOriginY HalfHeight
@@ -198,6 +201,20 @@ banks 16
     ld iyh,a
 .endm
 
+.macro SignExtendAToHL
+	ld l,a
+	rlca		; or rla
+	sbc a,a
+	ld h,a
+.endm
+
+.macro SignExtendAToBC
+	ld c,a
+	rlca		; or rla
+	sbc a,a
+	ld b,a
+.endm    
+
 ; 256 step cosinus
 ; input in c and output in a
 .macro GetCosC
@@ -272,6 +289,7 @@ banks 16
     CurFrameIdx       dw
     SPSave            dw
     MusicPtr          dw 
+    RandSeed          db
     MusicBank         db
     MusicFrameWait    db
     CurEffect         db
@@ -297,6 +315,22 @@ banks 16
     
     ; keep this last
     RAMCode           .
+.ende
+
+; 2D particles
+.enum $c100 export
+    PartXH            dsb 256
+    PartXL            dsb 256
+    PartYH            dsb 256
+    PartYL            dsb 256
+    PartXA            dsb 256 ; (4.4 fixed point)
+    PartYA            dsb 256 ; (4.4 fixed point)
+    PartLife          dsb 256 ; (4.4 fixed point)
+    PartLifeA         dsb 256 ; (4.4 fixed point)
+    PartSAT           dsb 256
+    PartCount         db
+    PartMode          db
+    PartInitialBeat   db
 .ende
 
 ; VectorBalls
@@ -785,6 +819,36 @@ ClearTileMap:
 
     ret
     
+; Fast RND
+;
+; An 8-bit pseudo-random number generator,
+; using a similar method to the Spectrum ROM,
+; - without the overhead of the Spectrum ROM.
+;
+; R = random number seed
+; an integer in the range [1, 256]
+;
+; R -> (33*R) mod 257
+;
+; S = R - 1
+; an 8-bit unsigned integer
+random:
+    push bc
+    ld a, (RandSeed)
+    ld b, a 
+
+    rrca ; multiply by 32
+    rrca
+    rrca
+    xor $1f
+
+    add a, b
+    sbc a, 255 ; carry
+
+    ld (RandSeed), a
+    pop bc
+    ret    
+        
 ;==============================================================
 ; Music code
 ;==============================================================
@@ -994,6 +1058,365 @@ Fadein:
     jp UploadPalette
     
 ;==============================================================
+; 2D particles code
+;==============================================================
+
+PartDoOneInitByte:
+    ld c, a
+
+    ; x
+    ld a, ixl
+    add a, 8
+    ld ixl, a
+    ld (hl), a
+    inc h
+    inc h
+    ; y
+    ld a, 0
+    adc a, ixh
+    ld ixh, a
+    add a, a
+    add a, a
+    add a, a
+    ld (hl), a
+    dec h
+    dec h
+
+    ld a, c
+
+    rrca
+    ret c
+
+    inc l
+
+    ret
+    
+PartRandomizePos:
+    ld b, 64
+-:
+    call random
+    srl a
+    ld (hl), a
+    inc l
+    djnz -
+    
+    ret
+
+PartRandomizeLow:
+    ld b, 64
+-:
+    call random
+    sra a
+    sra a
+    ld (hl), a
+    inc l
+    djnz -
+    
+    ret
+    
+PartRandomizeLifeA:
+    ld b, 64
+-:
+    call random
+    .repeat 5
+        srl a
+    .endr
+    add a, 2
+    ld (hl), a
+    inc l
+    djnz -
+    
+    ret
+    
+PartRandomizeThres:
+.define @Thres $10
+    ld b, 64
+-:
+    call random
+    cp @Thres
+    jr nc, +
+    ld a, @Thres
++:
+    ld (hl), a
+    inc l
+    djnz -
+    
+    ret
+    
+ParticlesInitGreets:
+    ld a, 42
+    ld (RandSeed), a
+    xor a
+    ld (PartMode), a
+    ld de, PartGreets
+    jp ParticlesInit
+
+ParticlesInitTitan:
+    ld a, 69
+    ld (RandSeed), a
+    ld a, 1
+    ld (PartMode), a
+    ld de, PartTitan
+    jp ParticlesInit
+
+ParticlesInitSMSPower:
+    ld a, 231
+    ld (RandSeed), a
+    ld a, 1
+    ld (PartMode), a
+    ld de, PartSMSPower
+    jp ParticlesInit
+    
+ParticlesInitPopsy:
+    ld a, 69
+    ld (RandSeed), a
+    ld a, 1
+    ld (PartMode), a
+    ld de, PartPopsy
+    jp ParticlesInit
+
+ParticlesInitXMen:
+    ld a, 69
+    ld (RandSeed), a
+    ld a, 1
+    ld (PartMode), a
+    ld de, PartXMen
+    jp ParticlesInit
+
+ParticlesInit:
+    ld bc, $4000
+    ld hl, PartXH
+    ld ix, PartOriginY * 32
+-:    
+    ld a, (de)
+    inc de
+    
+    .repeat 8
+        call PartDoOneInitByte
+    .endr
+    
+    djnz -
+    
+    ld a, l
+    ld (PartCount), a
+    
+    memset PartXL, $00, 64
+    memset PartYL, $00, 64
+    memset PartXA, $00, 64
+    memset PartYA, $00, 64
+    memset PartLife, $ff, 64
+    
+    ld hl, PartLifeA
+    call PartRandomizeLifeA
+
+    ld a, (PartMode)
+    or a
+    jp z, +
+    ld hl, PartXA
+    call PartRandomizeThres
+    ld hl, PartYA
+    call PartRandomizeThres
+    jp ++
++:    
+    ld hl, PartXA
+    call PartRandomizeLow
+    ld hl, PartYA
+    call PartRandomizePos
++:    
+++:
+
+    ; load tiles (Particles)
+    SetVDPAddress $2000 | VRAMWrite
+    ld hl,PartData
+    ld bc,PartSize
+    CopyToVDP
+
+    ld a, %1100000
+;          ||||||`- Zoomed sprites -> 16x16 pixels
+;          |||||`-- Doubled sprites -> 2 tiles per sprite, 8x16
+;          ||||`--- Mega Drive mode 5 enable
+;          |||`---- 30 row/240 line mode
+;          ||`----- 28 row/224 line mode
+;          |`------ VBlank interrupts
+;          `------- Enable display
+    out (VDPControl), a
+    ld a, $81
+    out (VDPControl), a
+    
+    ; SAT address ($3f00)
+    ld a, $7f
+    out (VDPControl), a
+    ld a, $85
+    out (VDPControl), a
+    
+    ; SAT terminator
+    ld hl, PartSAT
+    ld a, (PartCount)
+    AddAToHL
+    ld a, $d0
+    ld (hl), a
+    
+    ld a, (CurBeatIdx)
+    ld (PartInitialBeat), a
+    
+    ret
+
+Particles:
+    ; upload current sat to VDP
+    
+    SetVDPAddress $3f00 | VRAMWrite
+    ld hl, PartSAT
+    ld c, VDPData
+    .repeat 256
+        outi
+    .endr
+    
+    ld ixh, 0
+PartLoop:    
+    ; get xyl
+    
+    ld h, >PartXH
+    ld a, ixh
+    ld l, a
+    ld b, (hl) ; xh
+    inc h
+    ld c, (hl) ; xl
+    inc h
+    ld d, (hl) ; yh
+    inc h
+    ld e, (hl) ; yl
+    inc h
+    ld a, (hl) ; xa
+    ld iyl, a
+    inc h
+    ld a, (hl) ; ya
+    ld iyh, a
+    inc h
+    ld a, (hl) ; life
+    ld ixl, a
+
+    ld a, (CurBeatIdx)
+    ld hl, PartInitialBeat
+    sub (hl)
+    cp PartInitialBeatWait
+    jp c, @NoTrans
+    
+    ; apply tranformations
+    
+    ld a, (PartMode)
+    or a
+    jp nz, +
+    call random
+    .repeat 4
+        sra a
+    .endr
+    add a, iyl
+    ld iyl, a
++:    
+
+    ; x
+    ld a, iyl
+    SignExtendAToHL
+    .repeat 2
+        add hl, hl
+    .endr
+    add hl, bc
+    ld b, h
+    ld c, l
+    ld a, b
+    cp 8
+    jr nc, +
+    ld de, Height * 256 ; out of screen y
+    ld iy, 0 ; zero acceleration
++:    
+
+    ; y
+    ld a, iyh
+    SignExtendAToHL
+    .repeat 2
+        add hl, hl
+    .endr
+    add hl, de
+    ex de, hl
+    ld a, d
+    cp 192
+    jr c, +
+    ld de, Height * 256 ; out of screen y
+    ld iy, 0 ; zero acceleration
++:    
+    
+    ; life
+    ld a, ixl
+    ex de, hl
+    ld d, >PartLifeA
+    ld e, ixh
+    ex de, hl
+    ld l, (hl)
+    sub l
+    ld ixl, a
+    jp nc, +
+    ld de, Height * 256 ; out of screen y
+    ld iy, 0 ; zero acceleration
++:
+
+    ; save xyl
+    
+    ld h, >PartXH
+    ld a, ixh
+    ld l, a
+    ld (hl), b ; xh
+    inc h
+    ld (hl), c ; xl
+    inc h
+    ld (hl), d ; yh
+    inc h
+    ld (hl), e ; yl
+    inc h
+    ld a, iyl
+    ld (hl), a ; xa
+    inc h
+    ld a, iyh
+    ld (hl), a ; ya
+    inc h
+    ld a, ixl
+    ld (hl), a ; life
+    
+@NoTrans:
+    
+    ; sat update
+    
+    ex de, hl
+    ld e, ixh
+    ld d, >PartSAT
+    ex de, hl
+    
+    ; sat y
+    ld (hl), d
+    
+    ; sat second part
+    set 6, l
+    sla l
+
+    ; sat x
+    ld (hl), b
+    inc l
+
+    ; sat tile index
+    ld a, ixl
+    .repeat 4
+        rrca
+    .endr
+    and $0f
+    ld (hl), a
+
+    inc ixh
+    ld a, (PartCount)
+    cp ixh
+    jp nz, PartLoop    
+        
+    ret
+  
+;==============================================================
 ; VectorBalls code
 ;==============================================================
 
@@ -1156,6 +1579,19 @@ VectorBallsInit:
     ld hl,VBData
     ld bc,VBSize
     CopyToVDP
+
+    ; 
+    ld a, %1100010
+;          ||||||`- Zoomed sprites -> 16x16 pixels
+;          |||||`-- Doubled sprites -> 2 tiles per sprite, 8x16
+;          ||||`--- Mega Drive mode 5 enable
+;          |||`---- 30 row/240 line mode
+;          ||`----- 28 row/224 line mode
+;          |`------ VBlank interrupts
+;          `------- Enable display
+    out (VDPControl), a
+    ld a, $81
+    out (VDPControl), a
 
     ; SAT address ($3f00)
     ld a, $7f
@@ -1376,7 +1812,6 @@ VBLoop:
     
     ex de, hl
     ld e, ixh
-    ; sla e
     ld d, >VBSAT
     ex de, hl
     
@@ -2013,6 +2448,31 @@ Effects:
 .dw NullSub
 .dw 0
 
+.dw Particles
+.dw ParticlesInitGreets
+.dw NullSub
+.dw 0
+
+.dw Particles
+.dw ParticlesInitTitan
+.dw NullSub
+.dw 0
+
+.dw Particles
+.dw ParticlesInitSMSPower
+.dw NullSub
+.dw 0
+
+.dw Particles
+.dw ParticlesInitPopsy
+.dw NullSub
+.dw 0
+
+.dw Particles
+.dw ParticlesInitXMen
+.dw NullSub
+.dw 0
+
 .dw Fadeout
 .dw NullSub
 .dw SetDummySpriteTable
@@ -2129,7 +2589,21 @@ VBInitZ:
 .repeat 4
     .db nsz / 2
     .db sz / 2
-.endr    
+.endr
+
+PartData:
+.incbin "vb/part (tiles).bin" fsize PartSize
+
+PartGreets:
+.incbin "test_gfx/part_greets.mono" skip 0 read 64
+PartSMSPower:
+.incbin "test_gfx/part_greets.mono" skip 64 read 64
+PartTitan:
+.incbin "test_gfx/part_greets.mono" skip 128 read 64
+PartPopsy:
+.incbin "test_gfx/part_greets.mono" skip 192 read 64
+PartXMen:
+.incbin "test_gfx/part_greets.mono" skip 256 read 64
 
 ;==============================================================
 .bank 0 slot 0
