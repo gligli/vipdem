@@ -62,6 +62,8 @@ banks 16
 .define VBOriginY HalfHeight
 .define VBOriginZ (-64)
 
+.define MusicVBlankPerBeat 48
+
 ;==============================================================
 ; Utility macros
 ;==============================================================
@@ -274,7 +276,9 @@ banks 16
     MusicFrameWait    db
     CurEffect         db
     HadVBlank         db  
+    BeatCounter       db
     LocalPalette      dsb 32
+    FadeinPalette     dsb 32
 .ende
 
 ; RotoZoom / PseudoMode7
@@ -401,8 +405,7 @@ Reinit:
     WaitVBlank 0
     djnz -
 
-    memcpy LocalPalette, RotoPalette, 32
-    call UploadPalette
+    memcpy FadeinPalette, RotoPalette, 32
     
     ; Effect init
     call CurEffectInit
@@ -750,8 +753,7 @@ UploadPalette:
     .endr
     
     ret
-    
-    
+        
 SetDummySpriteTable:
     ; dummy Sprite table
     SetVDPAddress $3f00 | VRAMWrite
@@ -820,6 +822,19 @@ MusicInit:
 MusicUpdate:
     push bc
     push de
+    
+    ; beats management
+    ld a, (BeatCounter)
+    or a
+    jp nz, +
+    ld hl, CurBeatIdx
+    inc (hl)
+    ld a, MusicVBlankPerBeat
++:    
+    dec a
+    ld (BeatCounter), a
+    
+    ; context switch
     ld a, (MapperSlot1)
     ld b, a
     ld a, (MusicBank)
@@ -862,7 +877,7 @@ MusicUpdate:
     ld (MusicFrameWait), a
     
 @Return:    
-
+    ; context switch
     ld (MusicPtr), hl
     ld a, b
     ld (MapperSlot1), a
@@ -871,7 +886,7 @@ MusicUpdate:
     ret
 
 ;==============================================================
-; Fadeout code
+; Fade in / fade out code
 ;==============================================================
 
 FadeoutLocalPalette:
@@ -912,11 +927,70 @@ FadeoutLocalPalette:
     
     ret
     
+FadeinLocalPalette:
+    ld b, VDPPaletteSize
+    ld de, FadeinPalette
+    ld hl, LocalPalette
+-:
+    ld a, (de)
+    ld c, a
+    
+    ; blue first
+    ld a, c
+    and $30
+    jr z, +
+    ld a, c
+    sub $10
+    ld c, a
+    ld a, (hl)
+    add a, $10
+    ld (hl), a
+    jp ++
++:    
+    ; then red
+    ld a, c
+    and $03
+    jr z, +
+    ld a, c
+    dec a
+    ld c, a
+    inc (hl)
+    jp ++
++:    
+    ; then green
+    ld a, c
+    and $0c
+    jr z, +
+    ld a, c
+    sub $04
+    ld c, a
+    ld a, (hl)
+    add a, $04
+    ld (hl), a
++:    
+++:    
+    
+    ld a, c
+    ld (de), a
+
+    inc de
+    inc hl
+    djnz -
+    
+    ret
+    
 Fadeout:
     ld a, (CurFrameIdx)
     and $03
     ret nz
     call FadeoutLocalPalette
+    jp UploadPalette
+    
+Fadein:
+    ld a, (CurFrameIdx)
+    and $03
+    ret nz
+    call FadeinLocalPalette
     jp UploadPalette
     
 ;==============================================================
@@ -1111,6 +1185,7 @@ VectorBalls:
         outi
     .endr
 
+VectorBallsNoUpload:
     ; get sin / cos of angles
     
     ld de, VBSinCos
@@ -1355,7 +1430,13 @@ VBLoop:
     call VBSATSort
 
     ret
-    
+
+VectorBallsInitOneUpdate
+    call VectorBallsInit
+    call VectorBallsNoUpload
+    WaitVBlank 0
+    jp VectorBalls
+
 ;==============================================================
 ; RotoZoom code
 ;==============================================================
@@ -1927,6 +2008,11 @@ PM7LineLoop:
 
 .org $3a00
 Effects:
+.dw Fadein
+.dw VectorBallsInitOneUpdate
+.dw NullSub
+.dw 0
+
 .dw VectorBalls
 .dw VectorBallsInit
 .dw NullSub
@@ -1935,6 +2021,11 @@ Effects:
 .dw Fadeout
 .dw NullSub
 .dw SetDummySpriteTable
+.dw 0
+
+.dw Fadein
+.dw NullSub
+.dw NullSub
 .dw 0
 
 .dw RotoZoomMonoFB
