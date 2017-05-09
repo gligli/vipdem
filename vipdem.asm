@@ -60,7 +60,8 @@ banks 16
 .define PM7Fov 0.75
 
 .define PartOriginY 32
-.define PartInitialBeatWait 2
+.define PartInitialBeatWait 1
+.define PartEndBeat 4
 
 .define VBCount 16
 .define VBOriginX HalfWidth
@@ -1243,6 +1244,9 @@ ParticlesInitXMen:
     jp ParticlesInit
 
 ParticlesInit:
+    ld a, 1
+    ld (MapperSlot1), a
+
     ld bc, $4000
     ld hl, PartXH
     ld ix, PartOriginY * 32
@@ -1290,6 +1294,9 @@ ParticlesInit:
     ld bc,PartSize
     CopyToVDP
 
+    ; Load palette (VectorBalls)
+    memcpy LocalPalette + TilePaletteSize, VBPalette, TilePaletteSize
+
     ld a, %1100000
 ;          ||||||`- Zoomed sprites -> 16x16 pixels
 ;          |||||`-- Doubled sprites -> 2 tiles per sprite, 8x16
@@ -1330,6 +1337,8 @@ Particles:
         outi
     .endr
     
+    call UploadPalette
+
     ld ixh, 0
 PartLoop:    
     ; get xyl
@@ -1359,6 +1368,8 @@ PartLoop:
     sub (hl)
     cp PartInitialBeatWait
     jp c, @NoTrans
+    cp PartEndBeat
+    jp z, NextEffect_JP
     
     ; apply tranformations
     
@@ -2387,7 +2398,6 @@ RotoZoomMonoFB:
     jp z, +
     call Fadein
     call Fadein
-    call Fadein
     jp ++
 +:    
     bit 1, a
@@ -2901,7 +2911,7 @@ RotoSequenceOne:
     .db 0       ; scale inc
     .db 64      ; x inc
     .db 32      ; y inc
-    .db 0       ; flags
+    .db 1       ; flags
 
     .db 8       ; beats per step
     .db 0       ; rotation inc
@@ -2911,7 +2921,7 @@ RotoSequenceOne:
     .db 0       ; flags
 
     .db 8       ; beats per step
-    .db 1       ; rotation inc
+    .db 2       ; rotation inc
     .db 10      ; scale inc
     .db 16      ; x inc
     .db 32      ; y inc
@@ -2951,28 +2961,23 @@ EffectsSequence:
 .dw SetDummySpriteTable
 .dw 0
 
-.dw Fadein
-.dw PseudoMode7Init
-.dw NullSub
-.dw 0
+; .dw Fadein
+; .dw PseudoMode7Init
+; .dw NullSub
+; .dw 0
 
-.dw PseudoMode7MonoFB
-.dw NullSub
-.dw NullSub
-.dw 0
+; .dw PseudoMode7MonoFB
+; .dw NullSub
+; .dw NullSub
+; .dw 0
 
-.dw Fadeout
-.dw NullSub
-.dw ClearTileMap
-.dw 0
-
-.dw Fadein
-.dw ParticlesInitGreets
-.dw NullSub
-.dw 0
+; .dw Fadeout
+; .dw NullSub
+; .dw ClearTileMap
+; .dw 0
 
 .dw Particles
-.dw NullSub
+.dw ParticlesInitGreets
 .dw NullSub
 .dw 0
 
@@ -2993,6 +2998,11 @@ EffectsSequence:
 
 .dw Particles
 .dw ParticlesInitXMen
+.dw NullSub
+.dw 0
+
+.dw NullSub
+.dw NullSub
 .dw NullSub
 .dw 0
 
