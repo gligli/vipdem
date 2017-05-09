@@ -62,7 +62,8 @@ banks 16
 
 .define VBCount 16
 .define VBOriginX HalfWidth
-.define VBOriginY HalfHeight
+.define VBOriginY 64
+.define VBOriginYShadow 64
 .define VBOriginZ (-64)
 
 .define MusicVBlankPerBeat 48
@@ -1580,10 +1581,45 @@ VectorBallsInit:
     ; init Z
     memcpy VBZ, VBInitZ, VBCount
 
+    ld a, 12
+    ld (MapperSlot1), a
+    
+    ; load tiles (Checkerboard)
+    SetVDPAddress $0000 | VRAMWrite
+    ld hl,CheckTiles
+    ld bc,CheckTilesSize
+    CopyToVDP
+    
+    ; load tilemaps (Checkerboard)
+    SetVDPAddress $3000 | VRAMWrite
+    ld hl,CheckTileMap
+    ld bc,TileMapSize
+    CopyToVDP
+
+    SetVDPAddress $3800 | VRAMWrite
+    ld hl,CheckTileMap
+    ld bc,TileMapSize
+    CopyToVDP
+    
+    ; Load palette
+    SetVDPAddress $00 | CRAMWrite
+    ld hl,CheckPalette
+    ld bc,TilePaletteSize
+    CopyToVDP
+    
     ; load tiles (VectorBalls)
     SetVDPAddress $2000 | VRAMWrite
-    ld hl,VBData
-    ld bc,VBSize
+    ld hl,VBTiles
+    ld bc,VBTilesSize
+    CopyToVDP
+
+    ld a, 1
+    ld (MapperSlot1), a
+
+    ; load tiles (Shadow)
+    SetVDPAddress $3600 | VRAMWrite
+    ld hl,PartData
+    ld bc,TileSize
     CopyToVDP
 
     ; 
@@ -1606,7 +1642,7 @@ VectorBallsInit:
     out (VDPControl), a
     
     ; SAT terminator
-    ld hl, VBSAT + VBCount
+    ld hl, VBSAT + VBCount * 2
     ld a, $d0
     ld (hl), a
     
@@ -1859,11 +1895,13 @@ VBLoop:
     add a, VBOriginY
 
     ; don't let sprites y become $d0 (terminator)
-    ld d, 192
-    cp d
-    jr c, +
-    ld a, d
-+:    
+    ; ld d, 192
+    ; cp d
+    ; jr c, +
+    ; ld a, d
+; +:   
+
+    ; main sprite
     
     ex de, hl
     ld e, ixh
@@ -1889,7 +1927,7 @@ VBLoop:
     ld d, $3c
     and d
     rrca
-    ld c, a
+    ld ixl, a
 
     ; stretch effect
     ld a, (BeatCounter)
@@ -1910,9 +1948,34 @@ VBLoop:
     and $66
     
 ++:
-    add a, c
+    add a, ixl
     ld (hl), a
 
+    ; shadow sprite
+    
+    ld a, ixh
+    add a, VBCount
+    ld l, a
+    ld h, >VBSAT
+    
+    ; sat y (vb z)
+    ld a, b
+    add a, VBOriginYShadow
+    ld (hl), a
+
+    ; sat second part
+    set 6, l
+    sla l
+
+    ; sat x
+    ld (hl), c
+    inc l
+
+    ; sat tile index
+    ld a, $b0
+    ld (hl), a
+    
+    
     inc ixh
     ld a, ixh
     cp VBCount
@@ -2678,9 +2741,6 @@ SpriteData:
 MonoFBData:
 .incbin "MonoFB.bin" fsize MonoFBSize
 
-VBData:
-.incbin "vb/vb.sms" fsize VBSize
-
 .define nsz (-36)
 .define sz 35
 
@@ -2721,6 +2781,17 @@ PartPopsy:
 .incbin "test_gfx/part_greets.mono" skip 192 read 64
 PartXMen:
 .incbin "test_gfx/part_greets.mono" skip 256 read 64
+
+.bank 12 slot 1
+.org $0000
+CheckTiles:
+.incbin "test_gfx/check (tiles).bin" fsize CheckTilesSize
+CheckTileMap:
+.incbin "test_gfx/check (tilemap).bin"
+CheckPalette:
+.incbin "test_gfx/check (palette).bin"
+VBTiles:
+.incbin "vb/vb.sms" fsize VBTilesSize
 
 ;==============================================================
 .bank 0 slot 0
