@@ -51,6 +51,8 @@ banks 16
 ; Program defines
 ;==============================================================
 
+.define BorderColor 16
+
 .define RotoColumnCount 24
 .define RotoLineCount 24
 
@@ -406,6 +408,8 @@ main:
     jr nz, -
 
     call SetDummySpriteTable
+    
+    call UploadPalette
     
     in a, (VDPControl) ; ack any previous int
     
@@ -2765,7 +2769,7 @@ RotoPalette:
     .db 47
 .endr
 VBPalette:
-.db $00 $10 $20 $34 $21 $31 $02 $03 $13 $07 $22 $0B $1F $2F $3F
+.db $00 $10 $20 $34 $21 $31 $02 $03 $13 $07 $22 $0B $1F $2F $3F BorderColor
     
 SpriteData:
 .repeat 64 index idx
@@ -2825,6 +2829,7 @@ Col2TileMap:
 .endr
 ColPalette:
 .incbin "test_gfx/64col1 (palette).bin"
+.dsb TilePaletteSize, BorderColor
 
 PartData:
 .incbin "vb/part (tiles).bin" fsize PartSize
@@ -2848,6 +2853,7 @@ CheckTileMap:
 .incbin "test_gfx/check (tilemap).bin"
 CheckPalette:
 .incbin "test_gfx/check (palette).bin"
+.dsb TilePaletteSize, BorderColor
 VBTiles:
 .incbin "vb/vb.sms" fsize VBTilesSize
 
