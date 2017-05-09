@@ -477,18 +477,8 @@ p0:
     in a, (IOPortA)
     ld c, a
     bit 5, c
-    jp nz, +
-        call CurEffectFinalize
-        ld a, (CurEffect)
-        inc a
-        cp (EffectsSequenceEnd-EffectsSequence) / 8
-        jp nz, ++
-        dec a
-    ++:
-        ld (CurEffect), a
-        jp Reinit
-        
-+:
+    jp z, NextEffect_JP
+
     ld a, (CurEffect)
     cp 1
     jp z, ++
@@ -830,6 +820,18 @@ CurEffectUpdate:
     ld d, (hl)
     ex de, hl
     jp (hl)
+
+NextEffect_JP:
+    call CurEffectFinalize
+    ld a, (CurEffect)
+    inc a
+    cp (EffectsSequenceEnd-EffectsSequence) / 8
+    jp nz, ++
+    dec a
+++:
+    ld (CurEffect), a
+    jp Reinit
+    
 
 UploadPalette:
     ld c, VDPData
@@ -1657,7 +1659,6 @@ VectorBallsInit:
     ; Load palette (VectorBalls)
     memcpy FadeinPalette + TilePaletteSize, VBPalette, TilePaletteSize
 
-
     ; load tiles (Shadow)
     SetVDPAddress $3600 | VRAMWrite
     ld hl,PartData
@@ -1764,6 +1765,23 @@ VectorBalls:
         add a, b
         ld (de), a
     .endr
+
+    ; flags
+    inc hl
+    ld a, (hl)
+    bit 0, a
+    jp z, +
+    call Fadein
+    jp ++
++:    
+    bit 1, a
+    jp z, +
+    call Fadeout
+    jp ++
++:    
+    bit 7, a
+    jp nz, NextEffect_JP
+++:
     
     ; get sin / cos of angles
     
@@ -2352,7 +2370,7 @@ RotoZoomMonoFB:
     ld (RotoY), de
     
     ld a, (hl)
-    bit 0, a
+    bit 2, a
     jp z, +
     ld a, (RotoLoadedOtherCol)
     or a
@@ -2363,18 +2381,24 @@ RotoZoomMonoFB:
     call RotoLoadOtherColTilemap
     ld a, 1
     ld (RotoLoadedOtherCol), a
+    jp ++
++:    
+    bit 0, a
+    jp z, +
+    call Fadein
+    call Fadein
+    call Fadein
+    jp ++
 +:    
     bit 1, a
     jp z, +
-    call Fadein
-    call Fadein
-    call Fadein
-+:    
-    bit 2, a
-    jp z, +
     call Fadeout
     call Fadeout
+    jp ++
 +:    
+    bit 7, a
+    jp nz, NextEffect_JP
+++:
     
     ; precaclulate increments for one line
 
@@ -2585,6 +2609,10 @@ PseudoMode7Init:
     ld bc,MonoFBTilesSize
     CopyToVDP
 
+    ; Load palette
+    memcpy FadeinPalette, RotoPalette, TilePaletteSize
+    memcpy FadeinPalette + TilePaletteSize, ColPalette, TilePaletteSize
+
     ; texture slot
     ld a, 3
     ld (MapperSlot1), a
@@ -2787,43 +2815,49 @@ VBSequence:
     .db 1       ; counter right shift + 1
     .dw 0       ; first coord address
     .dw 0       ; second coord address
+    .db 1       ; flags
 VBSequenceOne:
    
     .db 1
     .db 5
     .dw VBRX
     .dw 0
+    .db 0
     
-    .db 1,1,0,0,0,0 ; wait 1 beat
+    .db 1,1,0,0,0,0,0 ; wait 1 beat
     
     .db 1
     .db 4
     .dw VBRX
     .dw 0
+    .db 0
     
-    .db 1,1,0,0,0,0 ; wait 1 beat
+    .db 1,1,0,0,0,0,0 ; wait 1 beat
 
     .db 1
     .db 3
     .dw VBRX
     .dw 0
+    .db 0
     
-    .db 1,1,0,0,0,0 ; wait 1 beat
+    .db 1,1,0,0,0,0,0 ; wait 1 beat
 
     .repeat 2
         .db 1
         .db 5
         .dw VBRX
         .dw VBRY
+        .db 0
         
-        .db 1,1,0,0,0,0 ; wait 1 beat
+        .db 1,1,0,0,0,0,0 ; wait 1 beat
 
         .db 1
         .db 4
         .dw VBRX
         .dw VBRY
+        .db 0
         
-        .db 1,1,0,0,0,0 ; wait 1 beat
+        .db 1,1,0,0,0,0,0 ; wait 1 beat
     .endr
 
     .repeat 4 index idx
@@ -2831,17 +2865,26 @@ VBSequenceOne:
         .db 6 - idx / 2
         .dw VBRY
         .dw VBRZ
+        .db 0
     .endr
     
-    .db 8
+    .db 7
     .db 4
     .dw VBRZ
     .dw VBRX
+    .db 0
+    
+    .db 1
+    .db 4
+    .dw VBRZ
+    .dw VBRX
+    .db 2
     
     .db 255
     .db 1
     .dw 0
     .dw 0
+    .db $80
 VBSequenceEnd:
 
 RotoSequence:
@@ -2850,7 +2893,7 @@ RotoSequence:
     .db 0       ; scale inc
     .db 0       ; x inc
     .db 0       ; y inc
-    .db 2       ; flags
+    .db 1       ; flags
 RotoSequenceOne:    
 
     .db 7       ; beats per step
@@ -2872,7 +2915,7 @@ RotoSequenceOne:
     .db 10      ; scale inc
     .db 16      ; x inc
     .db 32      ; y inc
-    .db 1       ; flags
+    .db 4       ; flags
 
     .db 7       ; beats per step
     .db 2       ; rotation inc
@@ -2886,14 +2929,14 @@ RotoSequenceOne:
     .db -19     ; scale inc
     .db -32     ; x inc
     .db 64      ; y inc
-    .db 4       ; flags
+    .db 2       ; flags
 
     .db 255     ; beats per step
     .db 0       ; rotation inc
     .db 0       ; scale inc
     .db 0       ; x inc
     .db 0       ; y inc
-    .db 0       ; flags
+    .db $80     ; flags
 RotoSequenceEnd:
 
 .org $3a00
@@ -2903,18 +2946,8 @@ EffectsSequence:
 .dw ClearTileMap
 .dw 0
 
-.dw Fadein
-.dw VectorBallsInit
-.dw NullSub
-.dw 0
-
 .dw VectorBalls
-.dw NullSub
-.dw NullSub
-.dw 0
-
-.dw Fadeout
-.dw NullSub
+.dw VectorBallsInit
 .dw SetDummySpriteTable
 .dw 0
 
