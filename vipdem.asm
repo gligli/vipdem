@@ -344,6 +344,8 @@ banks 16
     VBRZ              db
     VBSinCos          dsb 6
     VBFactors         dsb 9
+    VBCurStep         dw
+    VBCurStepBeat     db
 .ende
 
 ;==============================================================
@@ -1609,6 +1611,10 @@ VectorBallsInit:
     ld (VBRY), a
     ld (VBRZ), a
     
+    ld (VBCurStepBeat), a
+    ld hl, VBSequence
+    ld (VBCurStep), hl
+    
     ret
 
 VectorBalls:
@@ -1621,6 +1627,51 @@ VectorBalls:
         outi
     .endr
 
+    ; advance sequencer
+
+-:    
+    ld hl, (VBCurStep)
+    ld a, (VBCurStepBeat)
+    ld c, (hl)
+    cp c
+    jp nz, +
+    ; to next step
+    xor a
+    ld (VBCurStepBeat), a
+    ld de, VBSequenceOne - VBSequence
+    add hl, de
+    ld (VBCurStep), hl
+    jp -
++:
+    ; shift beat counter
+    inc hl
+    ld a, (BeatCounter)
+    cp 0
+    jr nz, +
+    ; update cur step beat
+    ld de, VBCurStepBeat
+    ex de, hl
+    inc (hl)
+    ex de, hl
++:    
+    ld b, (hl)
+    jp +
+-:
+    srl a
++:
+    djnz -
+    ; add it to max 2 coords
+    ld b, a
+    .repeat 2
+        inc hl
+        ld e, (hl)
+        inc hl
+        ld d, (hl)
+        ld a, (de)
+        add a, b
+        ld (de), a
+    .endr
+    
     ; get sin / cos of angles
     
     ld de, VBSinCos
@@ -1852,7 +1903,7 @@ VBLoop:
     ld e, a
     ld a, (de)
     add a, a
-    and $62
+    and $66
     
 ++:
     add a, c
@@ -2499,6 +2550,68 @@ Effects:
 .dw 0
 
 EffectsEnd:
+
+VBSequence:
+    .db 2       ; beats per step
+    .db 1       ; counter right shift + 1
+    .dw 0       ; first coord address
+    .dw 0       ; second coord address
+VBSequenceOne:
+   
+    .db 1
+    .db 5
+    .dw VBRX
+    .dw 0
+    
+    .db 1,1,0,0,0,0 ; wait 1 beat
+    
+    .db 1
+    .db 4
+    .dw VBRX
+    .dw 0
+    
+    .db 1,1,0,0,0,0 ; wait 1 beat
+
+    .db 1
+    .db 3
+    .dw VBRX
+    .dw 0
+    
+    .db 1,1,0,0,0,0 ; wait 1 beat
+
+    .repeat 2
+        .db 1
+        .db 5
+        .dw VBRX
+        .dw VBRY
+        
+        .db 1,1,0,0,0,0 ; wait 1 beat
+
+        .db 1
+        .db 4
+        .dw VBRX
+        .dw VBRY
+        
+        .db 1,1,0,0,0,0 ; wait 1 beat
+    .endr
+
+    .repeat 4 index idx
+        .db 2
+        .db 6 - idx / 2
+        .dw VBRY
+        .dw VBRZ
+    .endr
+    
+    .db 8
+    .db 4
+    .dw VBRZ
+    .dw VBRX
+    
+    .db 255
+    .db 1
+    .dw 0
+    .dw 0
+VBSequenceEnd:
 
 .org $3b00
 SSqrLUT:
