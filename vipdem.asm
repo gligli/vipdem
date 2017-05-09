@@ -2821,7 +2821,7 @@ PM7LineLoop:
 .bank 2 slot 2
 
 VBSequence:
-    .db 2       ; beats per step
+    .db 1       ; beats per step
     .db 1       ; counter right shift + 1
     .dw 0       ; first coord address
     .dw 0       ; second coord address
@@ -2834,23 +2834,17 @@ VBSequenceOne:
     .dw 0
     .db 0
     
-    .db 1,1,0,0,0,0,0 ; wait 1 beat
-    
     .db 1
     .db 4
     .dw VBRX
     .dw 0
     .db 0
     
-    .db 1,1,0,0,0,0,0 ; wait 1 beat
-
     .db 1
     .db 3
     .dw VBRX
     .dw 0
     .db 0
-    
-    .db 1,1,0,0,0,0,0 ; wait 1 beat
 
     .repeat 2
         .db 1
@@ -2858,27 +2852,23 @@ VBSequenceOne:
         .dw VBRX
         .dw VBRY
         .db 0
-        
-        .db 1,1,0,0,0,0,0 ; wait 1 beat
 
         .db 1
         .db 4
         .dw VBRX
         .dw VBRY
         .db 0
-        
-        .db 1,1,0,0,0,0,0 ; wait 1 beat
     .endr
 
-    .repeat 4 index idx
+    .repeat 2 index idx
         .db 2
-        .db 6 - idx / 2
+        .db 6 - idx
         .dw VBRY
         .dw VBRZ
         .db 0
     .endr
     
-    .db 7
+    .db 3
     .db 4
     .dw VBRZ
     .dw VBRX
