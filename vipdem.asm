@@ -407,12 +407,6 @@ main:
 
     call SetDummySpriteTable
     
-    ; load tiles (Monochrome framebuffer emulation)
-    SetVDPAddress $0000 | VRAMWrite
-    ld hl,MonoFBData
-    ld bc,MonoFBSize
-    CopyToVDP
-
     in a, (VDPControl) ; ack any previous int
     
     ; turn screen on
@@ -433,17 +427,12 @@ main:
     ei
 
 Reinit:
-    ; this maps the first 48K of ROM to $0000-$BFFF
-    memcpy $fffc, init_tab, $0004
-    
     ; tmp delay
-    ld b, 8
+    ld b, 12
 -:
     WaitVBlank 0
     djnz -
 
-    memcpy FadeinPalette, RotoPalette, 32
-    
     ; Effect init
     call CurEffectInit
     
@@ -481,7 +470,7 @@ p0:
         inc a
         cp (EffectsEnd-Effects) / 8
         jp nz, ++
-        xor a
+        dec a
     ++:
         ld (CurEffect), a
         jp Reinit
@@ -966,15 +955,7 @@ FadeoutLocalPalette:
 -:
     ld c, (hl)
     
-    ; green first
-    ld a, c
-    and $0c
-    jr z, +
-    ld a, c
-    sub $04
-    jp ++
-+:    
-    ; then red
+    ; red
     ld a, c
     and $03
     jr z, +
@@ -982,7 +963,15 @@ FadeoutLocalPalette:
     dec a
     jp ++
 +:    
-    ; then blue
+    ; green
+    ld a, c
+    and $0c
+    jr z, +
+    ld a, c
+    sub $04
+    jp ++
++:    
+    ; blue
     ld a, c
     and $30
     jr z, +
@@ -1006,7 +995,7 @@ FadeinLocalPalette:
     ld a, (de)
     ld c, a
     
-    ; blue first
+    ; blue
     ld a, c
     and $30
     jr z, +
@@ -1018,17 +1007,7 @@ FadeinLocalPalette:
     ld (hl), a
     jp ++
 +:    
-    ; then red
-    ld a, c
-    and $03
-    jr z, +
-    ld a, c
-    dec a
-    ld c, a
-    inc (hl)
-    jp ++
-+:    
-    ; then green
+    ; green
     ld a, c
     and $0c
     jr z, +
@@ -1038,6 +1017,16 @@ FadeinLocalPalette:
     ld a, (hl)
     add a, $04
     ld (hl), a
+    jp ++
++:    
+    ; red
+    ld a, c
+    and $03
+    jr z, +
+    ld a, c
+    dec a
+    ld c, a
+    inc (hl)
 +:    
 ++:    
     
@@ -1052,14 +1041,14 @@ FadeinLocalPalette:
     
 Fadeout:
     ld a, (CurFrameIdx)
-    and $03
+    and $01
     ret nz
     call FadeoutLocalPalette
     jp UploadPalette
     
 Fadein:
     ld a, (CurFrameIdx)
-    and $03
+    and $01
     ret nz
     call FadeinLocalPalette
     jp UploadPalette
@@ -1601,11 +1590,8 @@ VectorBallsInit:
     ld bc,TileMapSize
     CopyToVDP
     
-    ; Load palette
-    SetVDPAddress $00 | CRAMWrite
-    ld hl,CheckPalette
-    ld bc,TilePaletteSize
-    CopyToVDP
+    ; Load palette (Checkerboard)
+    memcpy FadeinPalette, CheckPalette, TilePaletteSize
     
     ; load tiles (VectorBalls)
     SetVDPAddress $2000 | VRAMWrite
@@ -1615,6 +1601,10 @@ VectorBallsInit:
 
     ld a, 1
     ld (MapperSlot1), a
+
+    ; Load palette (VectorBalls)
+    memcpy FadeinPalette + TilePaletteSize, VBPalette, TilePaletteSize
+
 
     ; load tiles (Shadow)
     SetVDPAddress $3600 | VRAMWrite
@@ -1644,6 +1634,8 @@ VectorBallsInit:
     ; SAT terminator
     ld hl, VBSAT + VBCount * 2
     ld a, $d0
+    ld (hl), a
+    ld hl, VBSAT ; for first update
     ld (hl), a
     
     xor a
@@ -2109,12 +2101,47 @@ RotoRAMCodeBakePos4:
 .endm
 
 RotoZoomInit:
+    ld a, 1
+    ld (MapperSlot1), a
+   
+    ; load tiles (Monochrome framebuffer emulation)
+    SetVDPAddress $0000 | VRAMWrite
+    ld hl,MonoFBTiles
+    ld bc,MonoFBTilesSize
+    CopyToVDP
+
+    ; load tiles (Right columnn * 2)
+    SetVDPAddress $2000 | VRAMWrite
+    ld hl,Col1Tiles
+    ld bc,Col1TilesSize
+    CopyToVDP
+    SetVDPAddress $2800 | VRAMWrite
+    ld hl,Col2Tiles
+    ld bc,Col2TilesSize
+    CopyToVDP
+
+    ; load tilemaps (Right column)
+    SetVDPAddress $3000 | VRAMWrite
+    ld hl,Col1TileMap
+    ld bc,TileMapSize
+    CopyToVDP
+    SetVDPAddress $3800 | VRAMWrite
+    ld hl,Col1TileMap
+    ld bc,TileMapSize
+    CopyToVDP
+    
+    ; Load palette
+    memcpy FadeinPalette, RotoPalette, TilePaletteSize
+    memcpy FadeinPalette + TilePaletteSize, ColPalette, TilePaletteSize
+
     ; texture slot
     ld a, 3
     ld (MapperSlot1), a
 
     ld hl, $0000
     ld (RotoRot), hl
+    ld (RotoX), hl
+    ld (RotoY), hl
     ld hl, $02b0
     ld (RotoScl), hl
 
@@ -2362,6 +2389,15 @@ RotoRAMCodeRet:
 .endm
 
 PseudoMode7Init:
+    ld a, 1
+    ld (MapperSlot1), a
+
+    ; load tiles (Monochrome framebuffer emulation)
+    SetVDPAddress $0000 | VRAMWrite
+    ld hl,MonoFBTiles
+    ld bc,MonoFBTilesSize
+    CopyToVDP
+
     ; texture slot
     ld a, 3
     ld (MapperSlot1), a
@@ -2370,11 +2406,16 @@ PseudoMode7Init:
     ld (RotoRot), hl
     ld hl, $0400
     ld (RotoScl), hl
+    ld hl, $0000
+    ld (RotoX), hl
+    ld (RotoY), hl
     
     ld a, $80
     out (VDPControl), a
     ld a, $88
     out (VDPControl), a
+    
+    ret
     
 PM7ComputePerLineIncs:
     exx
@@ -2557,12 +2598,12 @@ PM7LineLoop:
 .org $3a00
 Effects:
 .dw Fadein
-.dw NullSub
+.dw VectorBallsInit
 .dw NullSub
 .dw 0
 
 .dw VectorBalls
-.dw VectorBallsInit
+.dw NullSub
 .dw NullSub
 .dw 0
 
@@ -2597,12 +2638,12 @@ Effects:
 .dw 0
 
 .dw Fadein
-.dw NullSub
+.dw RotoZoomInit
 .dw NullSub
 .dw 0
 
 .dw RotoZoomMonoFB
-.dw RotoZoomInit
+.dw NullSub
 .dw ClearTileMap
 .dw 0
 
@@ -2718,8 +2759,8 @@ VDPInitDataEnd:
 
 RotoPalette:
 .repeat 4
-    .db 1
-    .db 27
+    .db 32
+    .db 63
     .db 16
     .db 47
 .endr
@@ -2737,9 +2778,6 @@ SpriteData:
     .db 128 + ((idx * 8) & 63)
     .db (idx * 2) & $3f
 .endr
-
-MonoFBData:
-.incbin "MonoFB.bin" fsize MonoFBSize
 
 .define nsz (-36)
 .define sz 35
@@ -2767,6 +2805,26 @@ VBInitZ:
     .db nsz / 2
     .db sz / 2
 .endr
+
+MonoFBTiles:
+.incbin "MonoFB.bin" fsize MonoFBTilesSize
+
+Col1Tiles:
+.incbin "test_gfx/64col1 (tiles).bin" fsize Col1TilesSize
+Col1TileMap:
+.repeat 24 index  y
+    .dsb 48, 0
+    .incbin "test_gfx/64col1 (tilemap).bin" skip (y * 64 + 48) read 16
+.endr
+Col2Tiles:
+.incbin "test_gfx/64col2 (tiles).bin" fsize Col2TilesSize
+Col2TileMap:
+.repeat 24 index  y
+    .dsb 48, 0
+    .incbin "test_gfx/64col2 (tilemap).bin" skip (y * 64 + 48) read 16
+.endr
+ColPalette:
+.incbin "test_gfx/64col1 (palette).bin"
 
 PartData:
 .incbin "vb/part (tiles).bin" fsize PartSize
