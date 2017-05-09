@@ -729,6 +729,54 @@ FPMultiplySignedBByC:
     
     ret
     
+.macro FPMultiplySignedBByC_Faster
+    push de
+
+    ld  h, >SSqrLUT
+    ld  l,b
+    ld  a,b
+    ld  e,(hl)
+    inc h
+    ld  d,(hl)      ; DE = a^2
+    ld  l,c
+    ld  b,(hl)
+    dec h
+    ld  c,(hl)      ; BC = b^2
+    add a,l     ; let's try (a + b)
+    jp  po, +++     ; jump if no overflow
+
+    sub l
+    sub l
+    ld  l,a
+    ld  a,(hl)
+    inc h
+    ld  h,(hl)
+    ld  l,a     ; HL = (a - b)^2
+    ex  de,hl
+    add hl,bc
+    sbc hl,de       ; HL = a^2 + b^2 - (a - b)^2
+
+    jp ++++
+
++++:
+    ld  l,a
+    ld  a,(hl)
+    inc h
+    ld  h,(hl)
+    ld  l,a     ; HL = (a + b)^2
+    or  a
+    sbc hl,bc
+    or  a
+    sbc hl,de       ; HL = (a + b)^2 - a^2 - b^2
+
+++++:
+
+    ;sra h       ; uncomment to get real product
+    ;rr  l
+    
+    pop de
+.endm    
+    
 NullSub:
     ret
     
@@ -1431,20 +1479,20 @@ PartLoop:
     ; x
     VBGetCFromDE
     ld b, ixl
-    call FPMultiplySignedBByC
+    FPMultiplySignedBByC_Faster
     ld a, h
     ; y
     VBGetCFromDE
     ld b, iyl
     ex af, af'
-    call FPMultiplySignedBByC
+    FPMultiplySignedBByC_Faster
     ex af, af'
     add a, h
     ; z
     VBGetCFromDE
     ld b, iyh
     ex af, af'
-    call FPMultiplySignedBByC
+    FPMultiplySignedBByC_Faster
     ex af, af'
     add a, h
 .endm
