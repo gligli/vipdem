@@ -315,6 +315,9 @@ banks 16
     RotoVX            dw ; (8.8 fixed point)
     RotoVY            dw ; (8.8 fixed point)
     PM7CurLine        db
+    RotoCurStep       dw
+    RotoNextStepBeat  db
+    RotoLoadedOtherCol db
     
     ; keep this last
     RAMCode           .
@@ -407,6 +410,12 @@ main:
     or c
     jr nz, -
 
+    ; SAT address ($3f00)
+    ld a, $7f
+    out (VDPControl), a
+    ld a, $85
+    out (VDPControl), a
+
     call SetDummySpriteTable
     
     call UploadPalette
@@ -472,7 +481,7 @@ p0:
         call CurEffectFinalize
         ld a, (CurEffect)
         inc a
-        cp (EffectsEnd-Effects) / 8
+        cp (EffectsSequenceEnd-EffectsSequence) / 8
         jp nz, ++
         dec a
     ++:
@@ -781,7 +790,7 @@ NullSub:
     ret
     
 CurEffectInit:
-    ld h, >Effects
+    ld h, >EffectsSequence
     ld a, (CurEffect)
     add a, a
     add a, a
@@ -795,7 +804,7 @@ CurEffectInit:
     jp (hl)
     
 CurEffectFinalize:
-    ld h, >Effects
+    ld h, >EffectsSequence
     ld a, (CurEffect)
     add a, a
     add a, a
@@ -810,7 +819,7 @@ CurEffectFinalize:
     jp (hl)
     
 CurEffectUpdate:
-    ld h, >Effects
+    ld h, >EffectsSequence
     ld a, (CurEffect)
     add a, a
     add a, a
@@ -1613,15 +1622,6 @@ next2:
     jp qsloop
 
 VectorBallsInit:
-    ; init X
-    memcpy VBX, VBInitX, VBCount
-
-    ; init Y
-    memcpy VBY, VBInitY, VBCount
-    
-    ; init Z
-    memcpy VBZ, VBInitZ, VBCount
-
     ld a, 12
     ld (MapperSlot1), a
     
@@ -1663,6 +1663,15 @@ VectorBallsInit:
     ld hl,PartData
     ld bc,TileSize
     CopyToVDP
+
+    ; init X
+    memcpy VBX, VBInitX, VBCount
+
+    ; init Y
+    memcpy VBY, VBInitY, VBCount
+    
+    ; init Z
+    memcpy VBZ, VBInitZ, VBCount
 
     ; 
     ld a, %1100010
@@ -2174,11 +2183,11 @@ RotoZoomInit:
 
     ; load tilemaps (Right column)
     SetVDPAddress $3000 | VRAMWrite
-    ld hl,Col1TileMap
+    ld hl,Col2TileMap
     ld bc,TileMapSize
     CopyToVDP
     SetVDPAddress $3800 | VRAMWrite
-    ld hl,Col1TileMap
+    ld hl,Col2TileMap
     ld bc,TileMapSize
     CopyToVDP
     
@@ -2190,13 +2199,7 @@ RotoZoomInit:
     ld a, 3
     ld (MapperSlot1), a
 
-    ld hl, $0000
-    ld (RotoRot), hl
-    ld (RotoX), hl
-    ld (RotoY), hl
-    ld hl, $02b0
-    ld (RotoScl), hl
-
+    ; x scroll = 0
     ld a, $00
     out (VDPControl), a
     ld a, $88
@@ -2238,9 +2241,141 @@ RotoZoomInit:
     inc e
     jp nz, -
 
-    ret
+    jp RotoResetSequencer
 
+RotoResetSequencer:
+    ; coords init
+    ld hl, $0000
+    ld (RotoRot), hl
+    ld (RotoX), hl
+    ld (RotoY), hl
+    ld hl, $0100
+    ld (RotoScl), hl
+
+    ; sequencer init
+    ld hl, RotoSequence
+    ld (RotoCurStep), hl
+    ld a, (CurBeatIdx)
+    add a, (hl)
+    ld (RotoNextStepBeat), a
+
+    ret
+    
+RotoLoadOtherColTilemap:
+    ld a, 1
+    ld (MapperSlot1), a
+
+    ld b, 24
+    ld c, VDPData
+    ld hl, Col1TileMap
+-:
+    ld a, 24 * 2
+    AddAToHL
+    ld a, 24 * 2
+    AddAToDE
+    
+    ld a, e
+    out (VDPControl), a
+    ld a, d
+    out (VDPControl), a
+  
+    .repeat 8
+        outi
+        inc b
+        inc de
+        outi
+        inc b
+        inc de
+    .endr
+    
+    djnz -
+    
+    ld a, 3
+    ld (MapperSlot1), a
+    ret
+    
 RotoZoomMonoFB:
+    ; advance sequencer
+
+-:    
+    ld hl, (RotoCurStep)
+    ; beat counter
+    ld a, (CurBeatIdx)
+    ld c, a
+    ld a, (RotoNextStepBeat)
+    cp c
+    jr nz, +
+    ; to next step
+    ld de, RotoSequenceOne - RotoSequence
+    add hl, de
+    ld (RotoCurStep), hl
+    ld a, (CurBeatIdx)
+    add a, (hl)
+    ld (RotoNextStepBeat), a
+    jp -
++:
+    inc hl
+    ld a, (hl)
+    inc hl
+    ld de, (RotoRot)
+    SignExtendAToBC
+    ex de, hl
+    add hl, bc
+    ex de, hl
+    ld (RotoRot), de
+
+    ld a, (hl)
+    inc hl
+    ld de, (RotoScl)
+    SignExtendAToBC
+    ex de, hl
+    add hl, bc
+    ex de, hl
+    ld (RotoScl), de
+
+    ld a, (hl)
+    inc hl
+    ld de, (RotoX)
+    SignExtendAToBC
+    ex de, hl
+    add hl, bc
+    ex de, hl
+    ld (RotoX), de
+
+    ld a, (hl)
+    inc hl
+    ld de, (RotoY)
+    SignExtendAToBC
+    ex de, hl
+    add hl, bc
+    ex de, hl
+    ld (RotoY), de
+    
+    ld a, (hl)
+    bit 0, a
+    jp z, +
+    ld a, (RotoLoadedOtherCol)
+    or a
+    jp nz, +
+    ld de, $3000 | VRAMWrite
+    call RotoLoadOtherColTilemap
+    ld de, $3800 | VRAMWrite
+    call RotoLoadOtherColTilemap
+    ld a, 1
+    ld (RotoLoadedOtherCol), a
++:    
+    bit 1, a
+    jp z, +
+    call Fadein
+    call Fadein
+    call Fadein
++:    
+    bit 2, a
+    jp z, +
+    call Fadeout
+    call Fadeout
++:    
+    
     ; precaclulate increments for one line
 
     exx
@@ -2642,74 +2777,10 @@ PM7LineLoop:
     ret
 
 ;==============================================================
-; Data
+; Data (sequencers)
 ;==============================================================
 
 .bank 2 slot 2
-
-.org $3a00
-Effects:
-.dw Fadein
-.dw VectorBallsInit
-.dw NullSub
-.dw 0
-
-.dw VectorBalls
-.dw NullSub
-.dw NullSub
-.dw 0
-
-.dw Particles
-.dw ParticlesInitGreets
-.dw NullSub
-.dw 0
-
-.dw Particles
-.dw ParticlesInitTitan
-.dw NullSub
-.dw 0
-
-.dw Particles
-.dw ParticlesInitSMSPower
-.dw NullSub
-.dw 0
-
-.dw Particles
-.dw ParticlesInitPopsy
-.dw NullSub
-.dw 0
-
-.dw Particles
-.dw ParticlesInitXMen
-.dw NullSub
-.dw 0
-
-.dw Fadeout
-.dw NullSub
-.dw SetDummySpriteTable
-.dw 0
-
-.dw Fadein
-.dw RotoZoomInit
-.dw NullSub
-.dw 0
-
-.dw RotoZoomMonoFB
-.dw NullSub
-.dw ClearTileMap
-.dw 0
-
-.dw PseudoMode7MonoFB
-.dw PseudoMode7Init
-.dw NullSub
-.dw 0
-
-.dw Fadeout
-.dw NullSub
-.dw ClearTileMap
-.dw 0
-
-EffectsEnd:
 
 VBSequence:
     .db 2       ; beats per step
@@ -2773,6 +2844,131 @@ VBSequenceOne:
     .dw 0
 VBSequenceEnd:
 
+RotoSequence:
+    .db 1       ; beats per step
+    .db 0       ; rotation inc
+    .db 0       ; scale inc
+    .db 0       ; x inc
+    .db 0       ; y inc
+    .db 2       ; flags
+RotoSequenceOne:    
+
+    .db 7       ; beats per step
+    .db 0       ; rotation inc
+    .db 0       ; scale inc
+    .db 64      ; x inc
+    .db 32      ; y inc
+    .db 0       ; flags
+
+    .db 8       ; beats per step
+    .db 0       ; rotation inc
+    .db 7       ; scale inc
+    .db 16      ; x inc
+    .db 32      ; y inc
+    .db 0       ; flags
+
+    .db 8       ; beats per step
+    .db 1       ; rotation inc
+    .db 10      ; scale inc
+    .db 16      ; x inc
+    .db 32      ; y inc
+    .db 1       ; flags
+
+    .db 7       ; beats per step
+    .db 2       ; rotation inc
+    .db -19     ; scale inc
+    .db -32     ; x inc
+    .db 64      ; y inc
+    .db 0       ; flags
+
+    .db 1       ; beats per step
+    .db 2       ; rotation inc
+    .db -19     ; scale inc
+    .db -32     ; x inc
+    .db 64      ; y inc
+    .db 4       ; flags
+
+    .db 255     ; beats per step
+    .db 0       ; rotation inc
+    .db 0       ; scale inc
+    .db 0       ; x inc
+    .db 0       ; y inc
+    .db 0       ; flags
+RotoSequenceEnd:
+
+.org $3a00
+EffectsSequence:
+.dw RotoZoomMonoFB
+.dw RotoZoomInit
+.dw ClearTileMap
+.dw 0
+
+.dw Fadein
+.dw VectorBallsInit
+.dw NullSub
+.dw 0
+
+.dw VectorBalls
+.dw NullSub
+.dw NullSub
+.dw 0
+
+.dw Fadeout
+.dw NullSub
+.dw SetDummySpriteTable
+.dw 0
+
+.dw Fadein
+.dw PseudoMode7Init
+.dw NullSub
+.dw 0
+
+.dw PseudoMode7MonoFB
+.dw NullSub
+.dw NullSub
+.dw 0
+
+.dw Fadeout
+.dw NullSub
+.dw ClearTileMap
+.dw 0
+
+.dw Fadein
+.dw ParticlesInitGreets
+.dw NullSub
+.dw 0
+
+.dw Particles
+.dw NullSub
+.dw NullSub
+.dw 0
+
+.dw Particles
+.dw ParticlesInitTitan
+.dw NullSub
+.dw 0
+
+.dw Particles
+.dw ParticlesInitSMSPower
+.dw NullSub
+.dw 0
+
+.dw Particles
+.dw ParticlesInitPopsy
+.dw NullSub
+.dw 0
+
+.dw Particles
+.dw ParticlesInitXMen
+.dw NullSub
+.dw 0
+
+EffectsSequenceEnd:
+
+;==============================================================
+; Data (LUTs)
+;==============================================================
+
 .org $3b00
 SSqrLUT:
 .repeat 128 index x
@@ -2798,6 +2994,9 @@ CosLUT:
 .dbcos 0, 255, 360 / 256, 127.999, 0
 
 ;==============================================================
+; Data (2D GFX)
+;==============================================================
+
 .bank 1 slot 1
 .org $0000
 
@@ -2906,6 +3105,9 @@ VBTiles:
 .incbin "vb/vb.sms" fsize VBTilesSize
 
 ;==============================================================
+; Data (MonoFB textures)
+;==============================================================
+
 .bank 0 slot 0
 .org $0000
 jp main
@@ -2918,6 +3120,9 @@ rst 0
 .incbin "anim_128_1/fixed.bin" skip $67 read $3f99
 
 ;==============================================================
+; Data (Music)
+;==============================================================
+
 .bank 3 slot 1
 .org $0000
 .incbin "anim_128_1/fixed.bin" skip $4000 read $4000
