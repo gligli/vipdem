@@ -360,7 +360,7 @@ interrupt:
     in a, (VDPControl) ;ack vdp int
     and $80
     ld (HadVBlank), a
-    call m, MusicUpdate
+    jp m, MusicUpdate
     pop hl
     pop af
     ei
@@ -949,6 +949,10 @@ MusicUpdate:
     ld (MapperSlot1), a
     pop de
     pop bc
+    ; out of interrupt mode
+    pop hl
+    pop af
+    ei
     ret
 
 ;==============================================================
