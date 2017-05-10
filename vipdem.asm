@@ -59,7 +59,7 @@ banks 16
 .define PM7LineCount 12
 .define PM7Fov 0.75
 
-.define PartOriginY 32
+.define PartOriginY 0
 .define PartInitialBeatWait 1
 .define PartEndBeat 4
 
@@ -472,6 +472,7 @@ p0:
     ld a, $82
     out (VDPControl), a
 
+/*
     ; Effect switcher
     
     in a, (IOPortA)
@@ -555,7 +556,8 @@ p0:
     jp c, +
     inc (hl)
 +:   
-    
+*/
+
 p1:
     call CurEffectUpdate
     jp MainLoop
@@ -1116,6 +1118,19 @@ Fadein:
     call FadeinLocalPalette
     jp UploadPalette
     
+FadeinBeat:
+    call Fadein
+    ld a, (BeatCounter)
+    or a
+    jp z, NextEffect_JP
+    ret
+    
+FadeoutBeat:
+    call Fadeout
+    ld a, (BeatCounter)
+    or a
+    jp z, NextEffect_JP
+    ret
 ;==============================================================
 ; 2D particles code
 ;==============================================================
@@ -1287,15 +1302,6 @@ ParticlesInit:
 +:    
 ++:
 
-    ; load tiles (Particles)
-    SetVDPAddress $2000 | VRAMWrite
-    ld hl,PartData
-    ld de,PartSize
-    CopyToVDP
-
-    ; Load palette (VectorBalls)
-    memcpy LocalPalette + TilePaletteSize, VBPalette, TilePaletteSize
-
     ld a, %1100000
 ;          ||||||`- Zoomed sprites -> 16x16 pixels
 ;          |||||`-- Doubled sprites -> 2 tiles per sprite, 8x16
@@ -1328,6 +1334,44 @@ ParticlesInit:
     
     ret
 
+ParticlesLoadVRAM:
+    ld a, 13
+    ld (MapperSlot1), a
+    
+    ; load tiles (Checkerboard)
+    SetVDPAddress $0000 | VRAMWrite
+    ld hl,StarsTiles
+    ld de,StarsTilesSize
+    CopyToVDP
+    
+    ; load tilemaps (Checkerboard)
+    SetVDPAddress $3000 | VRAMWrite
+    ld hl,StarsTileMap
+    ld de,TileMapSize
+    CopyToVDP
+
+    SetVDPAddress $3800 | VRAMWrite
+    ld hl,StarsTileMap
+    ld de,TileMapSize
+    CopyToVDP
+    
+    ; Load palette (Checkerboard)
+    memcpy FadeinPalette, StarsPalette, TilePaletteSize
+    
+    ld a, 1
+    ld (MapperSlot1), a
+
+    ; load tiles (Particles)
+    SetVDPAddress $2000 | VRAMWrite
+    ld hl,PartData
+    ld de,PartSize
+    CopyToVDP
+
+    ; Load palette (VectorBalls)
+    memcpy LocalPalette + TilePaletteSize, VBPalette, TilePaletteSize
+
+    ret
+    
 Particles:
     ; upload current sat to VDP
     
@@ -2968,6 +3012,11 @@ EffectsSequence:
 ; .dw ClearTileMap
 ; .dw 0
 
+.dw FadeinBeat
+.dw ParticlesLoadVRAM
+.dw NullSub
+.dw 0
+
 .dw Particles
 .dw ParticlesInitGreets
 .dw NullSub
@@ -3136,8 +3185,19 @@ CheckTileMap:
 CheckPalette:
 .incbin "test_gfx/check (palette).bin"
 .dsb TilePaletteSize, BorderColor
+
 VBTiles:
 .incbin "vb/vb.sms" fsize VBTilesSize
+
+.bank 13 slot 1
+.org $0000
+
+StarsTiles:
+.incbin "test_gfx/stars_dt (tiles).bin" fsize StarsTilesSize
+StarsTileMap:
+.incbin "test_gfx/stars_dt (tilemap).bin"
+StarsPalette:
+.incbin "test_gfx/stars_dt (palette).bin"
 
 ;==============================================================
 ; Data (MonoFB textures)
