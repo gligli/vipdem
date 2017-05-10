@@ -3000,6 +3000,14 @@ EffectsSequence:
 
 EffectsSequenceEnd:
 
+PSGInitData:
+.db $9f $bf $df $ff $81 $00 $a1 $00 $c1 $00
+PSGInitDataEnd:
+
+VDPInitData:
+.db $14,$80,$00,$81,$ff,$82,$51,$85,$ff,$86,$ff,$87,$00,$88,$00,$89,$ff,$8a
+VDPInitDataEnd:
+
 ;==============================================================
 ; Data (LUTs)
 ;==============================================================
@@ -3034,14 +3042,6 @@ CosLUT:
 
 .bank 1 slot 1
 .org $0000
-
-PSGInitData:
-.db $9f $bf $df $ff $81 $00 $a1 $00 $c1 $00
-PSGInitDataEnd:
-
-VDPInitData:
-.db $14,$80,$00,$81,$ff,$82,$51,$85,$ff,$86,$ff,$87,$00,$88,$00,$89,$ff,$8a
-VDPInitDataEnd:
 
 RotoPalette:
 .repeat 4
