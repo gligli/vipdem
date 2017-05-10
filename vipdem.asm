@@ -57,7 +57,7 @@ banks 16
 .define RotoLineCount 24
 
 .define PM7LineCount 12
-.define PM7Fov 0.75
+.define PM7Fov 0.85
 
 .define PartOriginY 0
 .define PartInitialBeatWait 1
@@ -308,6 +308,7 @@ banks 16
     RotoRAMBakeIncsEnd .
     RotoPrecalcData   dsb 256 ; align 256
     PM7SAT            dsb 256 ; align 256
+    PM7TM             dsb 1536    
 
     RotoRot           dw ; (8.8 fixed point)
     RotoScl           dw ; (8.8 fixed point)
@@ -482,7 +483,11 @@ p0:
     in a, (IOPortA)
     ld c, a
     bit 5, c
-    jp z, NextEffect_JP
+    jp nz, +
+        memset LocalPalette, 0, VDPPaletteSize
+        call UploadPalette
+        jp NextEffect_JP
++:        
 
     ; Roto / PM7 controls
 
@@ -795,10 +800,6 @@ CurEffectUpdate:
     jp (hl)
 
 NextEffect_JP:
-    ; TMP?
-    memset LocalPalette, 0, VDPPaletteSize
-    call UploadPalette
-
     call CurEffectFinalize
     ld a, (CurEffect)
     inc a
@@ -2654,6 +2655,30 @@ PseudoMode7Init:
 
     memcpy PM7SAT, RobFlySAT, 256
     
+    ; bg slot
+    ld a, 13
+    ld (MapperSlot1), a
+
+    ; load tiles (Background)
+    SetVDPAddress $25c0 | VRAMWrite
+    ld hl, PM7BGTiles
+    ld de, $a40
+    CopyToVDP
+    SetVDPAddress $3600 | VRAMWrite
+    ld hl, PM7BGTiles + $a40
+    ld de, $200
+    CopyToVDP
+
+    ; load tilemap (Background)
+    SetVDPAddress $3000 | VRAMWrite
+    ld hl,PM7BGTileMap
+    ld de,TileMapSize / 2
+    CopyToVDP
+    SetVDPAddress $3800 | VRAMWrite
+    ld hl,PM7BGTileMap
+    ld de,TileMapSize / 2
+    CopyToVDP
+
     ; texture slot
     ld a, 14
     ld (MapperSlot1), a
@@ -2949,7 +2974,7 @@ PM7LineLoop:
             ld b, a
        .endif
     .endr
-    
+
     exx
     ld hl, PM7CurLine
     dec (hl)
@@ -3328,10 +3353,10 @@ CosLUT:
 
 RotoPalette:
 .repeat 4
-    .db 32
+    .db 16
     .db 63
     .db 16
-    .db 47
+    .db 43
 .endr
 VBPalette:
 .db $00 $10 $20 $34 $21 $31 $02 $03 $13 $07 $22 $0B $1F $2F $3F BorderColor
@@ -3441,6 +3466,11 @@ StarsTileMap:
 .incbin "test_gfx/stars_dt (tilemap).bin"
 StarsPalette:
 .incbin "test_gfx/stars_dt (palette).bin"
+
+PM7BGTiles:
+.incbin "test_gfx/pm7_bg (tiles).bin" fsize PM7BGTilesSize
+PM7BGTileMap:
+.incbin "test_gfx/pm7_bg (tilemap).bin"
 
 ;==============================================================
 ; Data (MonoFB textures)
