@@ -100,15 +100,14 @@ banks 16
 
 .macro CopyToVDP
 ; copies data to the VDP
-; parameters: hl = data address, bc = data length
-; affects: a, hl, bc
--:  ld a,(hl)    ; get data byte
-    out (VDPData),a
-    inc hl       ; point to next letter
-    dec bc
-    ld a,b
-    or c
-    jr nz,-
+; parameters: hl = data address, de = data length
+; affects: a, hl, bc, de
+    ld c, VDPData
+-:  outi
+    dec de
+    ld a,d
+    or e
+    jp nz,-
 .endm
 
 .macro PlaySample
@@ -1291,7 +1290,7 @@ ParticlesInit:
     ; load tiles (Particles)
     SetVDPAddress $2000 | VRAMWrite
     ld hl,PartData
-    ld bc,PartSize
+    ld de,PartSize
     CopyToVDP
 
     ; Load palette (VectorBalls)
@@ -1641,18 +1640,18 @@ VectorBallsInit:
     ; load tiles (Checkerboard)
     SetVDPAddress $0000 | VRAMWrite
     ld hl,CheckTiles
-    ld bc,CheckTilesSize
+    ld de,CheckTilesSize
     CopyToVDP
     
     ; load tilemaps (Checkerboard)
     SetVDPAddress $3000 | VRAMWrite
     ld hl,CheckTileMap
-    ld bc,TileMapSize
+    ld de,TileMapSize
     CopyToVDP
 
     SetVDPAddress $3800 | VRAMWrite
     ld hl,CheckTileMap
-    ld bc,TileMapSize
+    ld de,TileMapSize
     CopyToVDP
     
     ; Load palette (Checkerboard)
@@ -1661,7 +1660,7 @@ VectorBallsInit:
     ; load tiles (VectorBalls)
     SetVDPAddress $2000 | VRAMWrite
     ld hl,VBTiles
-    ld bc,VBTilesSize
+    ld de,VBTilesSize
     CopyToVDP
 
     ld a, 1
@@ -1673,7 +1672,7 @@ VectorBallsInit:
     ; load tiles (Shadow)
     SetVDPAddress $3600 | VRAMWrite
     ld hl,PartData
-    ld bc,TileSize
+    ld de,TileSize
     CopyToVDP
 
     ; init X
@@ -2197,27 +2196,27 @@ RotoZoomInit:
     ; load tiles (Monochrome framebuffer emulation)
     SetVDPAddress $0000 | VRAMWrite
     ld hl,MonoFBTiles
-    ld bc,MonoFBTilesSize
+    ld de,MonoFBTilesSize
     CopyToVDP
 
     ; load tiles (Right columnn * 2)
     SetVDPAddress $2000 | VRAMWrite
     ld hl,Col1Tiles
-    ld bc,Col1TilesSize
+    ld de,Col1TilesSize
     CopyToVDP
     SetVDPAddress $2800 | VRAMWrite
     ld hl,Col2Tiles
-    ld bc,Col2TilesSize
+    ld de,Col2TilesSize
     CopyToVDP
 
     ; load tilemaps (Right column)
     SetVDPAddress $3000 | VRAMWrite
     ld hl,Col2TileMap
-    ld bc,TileMapSize
+    ld de,TileMapSize
     CopyToVDP
     SetVDPAddress $3800 | VRAMWrite
     ld hl,Col2TileMap
-    ld bc,TileMapSize
+    ld de,TileMapSize
     CopyToVDP
     
     ; Load palette
@@ -2308,15 +2307,16 @@ RotoLoadOtherColTilemap:
     ld a, d
     out (VDPControl), a
   
-    .repeat 8
+    .repeat 8 * 2
         outi
-        inc b
-        inc de
-        outi
-        inc b
-        inc de
     .endr
     
+    ld a, 8 * 2
+    AddAToDE
+    ld a, 8 * 2
+    add a, b
+    ld b, a
+
     djnz -
     
     ld a, 3
@@ -2385,7 +2385,7 @@ RotoZoomMonoFB:
     jp z, +
     ld a, (RotoLoadedOtherCol)
     or a
-    jp nz, +
+    jp nz, ++
     ld de, $3000 | VRAMWrite
     call RotoLoadOtherColTilemap
     ld de, $3800 | VRAMWrite
@@ -2616,7 +2616,7 @@ PseudoMode7Init:
     ; load tiles (Monochrome framebuffer emulation)
     SetVDPAddress $0000 | VRAMWrite
     ld hl,MonoFBTiles
-    ld bc,MonoFBTilesSize
+    ld de,MonoFBTilesSize
     CopyToVDP
 
     ; Load palette
