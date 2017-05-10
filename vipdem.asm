@@ -2269,7 +2269,7 @@ RotoZoomInit:
     memcpy FadeinPalette + TilePaletteSize, ColPalette, TilePaletteSize
 
     ; texture slot
-    ld a, 3
+    ld a, 0
     ld (MapperSlot1), a
 
     ; x scroll = 0
@@ -2332,6 +2332,9 @@ RotoZoomInit:
     ret
     
 RotoLoadOtherColTilemap:
+    ld a, (MapperSlot1)
+    push af
+    
     ld a, 1
     ld (MapperSlot1), a
 
@@ -2361,7 +2364,7 @@ RotoLoadOtherColTilemap:
 
     djnz -
     
-    ld a, 3
+    pop af
     ld (MapperSlot1), a
     ret
     
@@ -2652,7 +2655,7 @@ PseudoMode7Init:
     memcpy PM7SAT, RobFlySAT, 256
     
     ; texture slot
-    ld a, 3
+    ld a, 14
     ld (MapperSlot1), a
 
     ; scroll X
@@ -2674,12 +2677,13 @@ PseudoMode7Init:
     out (VDPControl), a
 
     ; coords init
-    ld hl, $0140
+    ld hl, $fec0
     ld (RotoRot), hl
-    ld hl, $0400
+    ld hl, $0280
     ld (RotoScl), hl
     ld hl, $0000
     ld (RotoX), hl
+    ld hl, $e000
     ld (RotoY), hl
 
     ; sequencer init
@@ -2802,29 +2806,20 @@ PseudoMode7MonoFB:
     RotoSeqAddToCoord RobBY
     
     ld a, (hl)
-    bit 2, a
-    jp z, +
-    ld a, (RotoLoadedOtherCol)
-    or a
-    jp nz, ++
-    ld de, $3000 | VRAMWrite
-    call RotoLoadOtherColTilemap
-    ld de, $3800 | VRAMWrite
-    call RotoLoadOtherColTilemap
-    ld a, 1
-    ld (RotoLoadedOtherCol), a
-    jp ++
-+:    
     bit 0, a
     jp z, +
-    call Fadein
     call Fadein
     jp ++
 +:    
     bit 1, a
     jp z, +
     call Fadeout
-    call Fadeout
+    jp ++
++:    
+    bit 2, a
+    jp z, +
+    ld a, 15
+    ld (MapperSlot1), a
     jp ++
 +:    
     bit 7, a
@@ -2835,13 +2830,14 @@ PseudoMode7MonoFB:
 
     RotoZoomFromRotScale 0, 1
     push bc
+    .repeat 2
+        srl d
+        rr e
+    .endr
     ld a, (RotoTX)
-    ld c, d
+    ld c, e
     ld b, a
     call FPMultiplySignedBByC
-    .repeat 3
-        add hl, hl
-    .endr
     ld de, (RotoX)
     ex de, hl
     or a
@@ -2849,13 +2845,14 @@ PseudoMode7MonoFB:
     ld (RotoX), hl
 
     pop de
+    .repeat 2
+        srl d
+        rr e
+    .endr
     ld a, (RotoTX)
-    ld c, d
+    ld c, e
     ld b, a
     call FPMultiplySignedBByC
-    .repeat 3
-        add hl, hl
-    .endr
     ld de, (RotoY)
     ex de, hl
     add hl, de
@@ -3090,7 +3087,7 @@ PM7Sequence:
     .db 2       ; beats per step
     .db 0       ; rotation inc
     .db 0       ; scale inc
-    .db 16       ; x inc
+    .db 3       ; x inc
     .db 0       ; y inc
     .db 0       ; rax inc
     .db 0       ; ray inc
@@ -3098,10 +3095,11 @@ PM7Sequence:
     .db 0       ; rby inc
     .db 1       ; flags
 PM7SequenceOne:    
+
     .db 2       ; beats per step
     .db 0       ; rotation inc
-    .db -12      ; scale inc
-    .db 16      ; x inc
+    .db -6      ; scale inc
+    .db 3       ; x inc
     .db 0       ; y inc
     .db 0       ; rax inc
     .db 0       ; ray inc
@@ -3109,10 +3107,10 @@ PM7SequenceOne:
     .db 0       ; rby inc
     .db 0       ; flags
 
-    .db 1       ; beats per step
+    .db 2       ; beats per step
     .db 0       ; rotation inc
-    .db -8      ; scale inc
-    .db 16      ; x inc
+    .db -2      ; scale inc
+    .db 3       ; x inc
     .db 0       ; y inc
     .db 0       ; rax inc
     .db 0       ; ray inc
@@ -3120,10 +3118,76 @@ PM7SequenceOne:
     .db 0       ; rby inc
     .db 0       ; flags
 
-    .db 1       ; beats per step
+    .db 2       ; beats per step
     .db 0       ; rotation inc
-    .db -4      ; scale inc
-    .db 16      ; x inc
+    .db 0       ; scale inc
+    .db 4       ; x inc
+    .db 0       ; y inc
+    .db 0       ; rax inc
+    .db 0       ; ray inc
+    .db 0       ; rbx inc
+    .db 0       ; rby inc
+    .db 0       ; flags
+
+    .db 2       ; beats per step
+    .db -1      ; rotation inc
+    .db 0       ; scale inc
+    .db 3       ; x inc
+    .db 0       ; y inc
+    .db 0       ; rax inc
+    .db 0       ; ray inc
+    .db 0       ; rbx inc
+    .db 0       ; rby inc
+    .db 0       ; flags
+
+    .db 2       ; beats per step
+    .db 0       ; rotation inc
+    .db 0       ; scale inc
+    .db 4       ; x inc
+    .db 0       ; y inc
+    .db 0       ; rax inc
+    .db 0       ; ray inc
+    .db 0       ; rbx inc
+    .db 0       ; rby inc
+    .db 0       ; flags
+
+    .db 3       ; beats per step
+    .db 2       ; rotation inc
+    .db 0       ; scale inc
+    .db 3       ; x inc
+    .db 0       ; y inc
+    .db 0       ; rax inc
+    .db 0       ; ray inc
+    .db 0       ; rbx inc
+    .db 0       ; rby inc
+    .db 4       ; flags
+
+    .db 5       ; beats per step
+    .db 0       ; rotation inc
+    .db 2       ; scale inc
+    .db 5       ; x inc
+    .db 0       ; y inc
+    .db 0       ; rax inc
+    .db 0       ; ray inc
+    .db 0       ; rbx inc
+    .db 0       ; rby inc
+    .db 0       ; flags
+
+    .db 4       ; beats per step
+    .db -1      ; rotation inc
+    .db -1      ; scale inc
+    .db 4       ; x inc
+    .db 0       ; y inc
+    .db 0       ; rax inc
+    .db 0       ; ray inc
+    .db 0       ; rbx inc
+    .db 0       ; rby inc
+    .db 0       ; flags
+
+    .db 4       ; beats per step
+    .db 0       ; rotation inc
+    .db 6       ; scale inc
+    .db 4       ; x inc
     .db 0       ; y inc
     .db 0       ; rax inc
     .db 0       ; ray inc
@@ -3134,40 +3198,7 @@ PM7SequenceOne:
     .db 2       ; beats per step
     .db 0       ; rotation inc
     .db 6       ; scale inc
-    .db 10      ; x inc
-    .db 0       ; y inc
-    .db 0       ; rax inc
-    .db 0       ; ray inc
-    .db 0       ; rbx inc
-    .db 0       ; rby inc
-    .db 0       ; flags
-
-    .db 1       ; beats per step
-    .db 2       ; rotation inc
-    .db 12      ; scale inc
-    .db 10      ; x inc
-    .db 0       ; y inc
-    .db 0       ; rax inc
-    .db 0       ; ray inc
-    .db 0       ; rbx inc
-    .db 0       ; rby inc
-    .db 0       ; flags
-
-    .db 3       ; beats per step
-    .db 1       ; rotation inc
-    .db 24      ; scale inc
-    .db 15      ; x inc
-    .db 0       ; y inc
-    .db 0       ; rax inc
-    .db 0       ; ray inc
-    .db 0       ; rbx inc
-    .db 0       ; rby inc
-    .db 0       ; flags
-
-    .db 4       ; beats per step
-    .db 0       ; rotation inc
-    .db 00      ; scale inc
-    .db 20      ; x inc
+    .db 8       ; x inc
     .db 0       ; y inc
     .db 0       ; rax inc
     .db 0       ; ray inc
@@ -3176,26 +3207,15 @@ PM7SequenceOne:
     .db 0       ; flags
 
     .db 2       ; beats per step
-    .db -1       ; rotation inc
-    .db -8      ; scale inc
-    .db 30      ; x inc
-    .db 0       ; y inc
-    .db 0       ; rax inc
-    .db 0       ; ray inc
-    .db 0       ; rbx inc
-    .db 0       ; rby inc
-    .db 0       ; flags
-
-    .db 4       ; beats per step
     .db 0       ; rotation inc
-    .db 0      ; scale inc
-    .db 30      ; x inc
+    .db 0       ; scale inc
+    .db 8       ; x inc
     .db 0       ; y inc
     .db 0       ; rax inc
     .db 0       ; ray inc
     .db 0       ; rbx inc
     .db 0       ; rby inc
-    .db 0       ; flags
+    .db 2       ; flags
 
     .db 255     ; beats per step
     .db 0       ; rotation inc
@@ -3206,7 +3226,7 @@ PM7SequenceOne:
     .db 0       ; ray inc
     .db 0       ; rbx inc
     .db 0       ; rby inc
-    .db $80*0     ; flags
+    .db $80     ; flags
 PM7SequenceEnd:
 
 .org $3a00
@@ -3429,21 +3449,26 @@ StarsPalette:
 .bank 0 slot 0
 .org $0000
 jp main
-.incbin "anim_128_1/fixed.bin" skip $03 read $35
+.incbin "test_gfx/check_tex.bin" skip $03 read $35
 .org $0038
 jp interrupt
-.incbin "anim_128_1/fixed.bin" skip $3b read $2b
+.incbin "test_gfx/check_tex.bin" skip $3b read $2b
 .org $0066
 rst 0
-.incbin "anim_128_1/fixed.bin" skip $67 read $3f99
+.incbin "test_gfx/check_tex.bin" skip $67
+
+.bank 14 slot 1
+.org $0000
+.incbin "test_gfx/road2_tex.bin"
+
+.bank 15 slot 1
+.org $0000
+.incbin "test_gfx/road_tex.bin"
 
 ;==============================================================
 ; Data (Music)
 ;==============================================================
 
-.bank 3 slot 1
-.org $0000
-.incbin "anim_128_1/fixed.bin" skip $4000 read $4000
 .bank 4 slot 1
 .org $0000
 .incbin "psg/2un_57.vgm" skip $40 read $4000
