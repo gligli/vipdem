@@ -1320,6 +1320,8 @@ ParticlesInit:
     AddAToHL
     ld a, $d0
     ld (hl), a
+    ld hl, PartSAT ; for first update
+    ld (hl), a
     
     ld a, (CurBeatIdx)
     ld (PartInitialBeat), a
