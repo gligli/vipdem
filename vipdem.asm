@@ -3187,7 +3187,7 @@ PM7SequenceOne:
     .db 4       ; beats per step
     .db 0       ; rotation inc
     .db 6       ; scale inc
-    .db 4       ; x inc
+    .db 5       ; x inc
     .db 0       ; y inc
     .db 0       ; rax inc
     .db 0       ; ray inc
@@ -3198,7 +3198,7 @@ PM7SequenceOne:
     .db 2       ; beats per step
     .db 0       ; rotation inc
     .db 6       ; scale inc
-    .db 8       ; x inc
+    .db 6       ; x inc
     .db 0       ; y inc
     .db 0       ; rax inc
     .db 0       ; ray inc
@@ -3209,7 +3209,7 @@ PM7SequenceOne:
     .db 2       ; beats per step
     .db 0       ; rotation inc
     .db 0       ; scale inc
-    .db 8       ; x inc
+    .db 7       ; x inc
     .db 0       ; y inc
     .db 0       ; rax inc
     .db 0       ; ray inc
