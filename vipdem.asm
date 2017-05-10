@@ -313,8 +313,12 @@ banks 16
     RotoScl           dw ; (8.8 fixed point)
     RotoX             dw ; (8.8 fixed point)
     RotoY             dw ; (8.8 fixed point)
-    RotoVX            dw ; (8.8 fixed point)
-    RotoVY            dw ; (8.8 fixed point)
+    RobAX             dw ; (8.8 fixed point)
+    RobAY             dw ; (8.8 fixed point)
+    RobBX             dw ; (8.8 fixed point)
+    RobBY             dw ; (8.8 fixed point)
+    RotoTX            db
+    RotoTY            db
     PM7CurLine        db
     RotoCurStep       dw
     RotoNextStepBeat  db
@@ -791,6 +795,10 @@ CurEffectUpdate:
     jp (hl)
 
 NextEffect_JP:
+    ; TMP?
+    memset LocalPalette, 0, VDPPaletteSize
+    call UploadPalette
+
     call CurEffectFinalize
     ld a, (CurEffect)
     inc a
@@ -2209,6 +2217,23 @@ RotoRAMCodeBakePos4:
     ld l, c
 .endm
 
+.macro RotoSeqAddToCoord args addr
+    ld a, (hl)
+    inc hl
+    ld de, (addr)
+    SignExtendAToBC
+    ex de, hl
+    add hl, bc
+    ex de, hl
+    ld (addr), de
+.endm
+    
+.macro RotoSeqLoadCoord args addr
+    ld a, (hl)
+    inc hl
+    ld (addr), a
+.endm
+    
 RotoZoomInit:
     ld a, 1
     ld (MapperSlot1), a
@@ -2289,9 +2314,6 @@ RotoZoomInit:
     inc e
     jp nz, -
 
-    jp RotoResetSequencer
-
-RotoResetSequencer:
     ; coords init
     ld hl, $0000
     ld (RotoRot), hl
@@ -2364,41 +2386,11 @@ RotoZoomMonoFB:
     jp -
 +:
     inc hl
-    ld a, (hl)
-    inc hl
-    ld de, (RotoRot)
-    SignExtendAToBC
-    ex de, hl
-    add hl, bc
-    ex de, hl
-    ld (RotoRot), de
 
-    ld a, (hl)
-    inc hl
-    ld de, (RotoScl)
-    SignExtendAToBC
-    ex de, hl
-    add hl, bc
-    ex de, hl
-    ld (RotoScl), de
-
-    ld a, (hl)
-    inc hl
-    ld de, (RotoX)
-    SignExtendAToBC
-    ex de, hl
-    add hl, bc
-    ex de, hl
-    ld (RotoX), de
-
-    ld a, (hl)
-    inc hl
-    ld de, (RotoY)
-    SignExtendAToBC
-    ex de, hl
-    add hl, bc
-    ex de, hl
-    ld (RotoY), de
+    RotoSeqAddToCoord RotoRot
+    RotoSeqAddToCoord RotoScl
+    RotoSeqAddToCoord RotoX
+    RotoSeqAddToCoord RotoY
     
     ld a, (hl)
     bit 2, a
@@ -2630,6 +2622,8 @@ RotoRAMCodeRet:
 .endm
 
 PseudoMode7Init:
+    call ClearTileMap
+    
     ld a, 1
     ld (MapperSlot1), a
 
@@ -2661,14 +2655,6 @@ PseudoMode7Init:
     ld a, 3
     ld (MapperSlot1), a
 
-    ld hl, $0140
-    ld (RotoRot), hl
-    ld hl, $0400
-    ld (RotoScl), hl
-    ld hl, $0000
-    ld (RotoX), hl
-    ld (RotoY), hl
-    
     ; scroll X
     ld a, $80
     out (VDPControl), a
@@ -2686,6 +2672,22 @@ PseudoMode7Init:
     out (VDPControl), a
     ld a, $81
     out (VDPControl), a
+
+    ; coords init
+    ld hl, $0140
+    ld (RotoRot), hl
+    ld hl, $0400
+    ld (RotoScl), hl
+    ld hl, $0000
+    ld (RotoX), hl
+    ld (RotoY), hl
+
+    ; sequencer init
+    ld hl, PM7Sequence
+    ld (RotoCurStep), hl
+    ld a, (CurBeatIdx)
+    add a, (hl)
+    ld (RotoNextStepBeat), a
 
     ret
     
@@ -2760,7 +2762,6 @@ PM7ComputePerLineIncsSimple:
     ret
 
 PseudoMode7MonoFB:
-
     ; upload current sat to VDP
     
     SetVDPAddress $3f00 | VRAMWrite
@@ -2770,6 +2771,95 @@ PseudoMode7MonoFB:
         outi
     .endr
 
+    ; advance sequencer
+
+-:    
+    ld hl, (RotoCurStep)
+    ; beat counter
+    ld a, (CurBeatIdx)
+    ld c, a
+    ld a, (RotoNextStepBeat)
+    cp c
+    jr nz, +
+    ; to next step
+    ld de, PM7SequenceOne - PM7Sequence
+    add hl, de
+    ld (RotoCurStep), hl
+    ld a, (CurBeatIdx)
+    add a, (hl)
+    ld (RotoNextStepBeat), a
+    jp -
++:
+    inc hl
+    
+    RotoSeqAddToCoord RotoRot
+    RotoSeqAddToCoord RotoScl
+    RotoSeqLoadCoord RotoTX
+    RotoSeqLoadCoord RotoTY
+    RotoSeqAddToCoord RobAX
+    RotoSeqAddToCoord RobAY
+    RotoSeqAddToCoord RobBX
+    RotoSeqAddToCoord RobBY
+    
+    ld a, (hl)
+    bit 2, a
+    jp z, +
+    ld a, (RotoLoadedOtherCol)
+    or a
+    jp nz, ++
+    ld de, $3000 | VRAMWrite
+    call RotoLoadOtherColTilemap
+    ld de, $3800 | VRAMWrite
+    call RotoLoadOtherColTilemap
+    ld a, 1
+    ld (RotoLoadedOtherCol), a
+    jp ++
++:    
+    bit 0, a
+    jp z, +
+    call Fadein
+    call Fadein
+    jp ++
++:    
+    bit 1, a
+    jp z, +
+    call Fadeout
+    call Fadeout
+    jp ++
++:    
+    bit 7, a
+    jp nz, NextEffect_JP
+++:
+
+    ; RotoTX/TY -> RotoX/Y
+
+    RotoZoomFromRotScale 0, 1
+    push bc
+    ld a, (RotoTX)
+    ld c, d
+    ld b, a
+    call FPMultiplySignedBByC
+    .repeat 3
+        add hl, hl
+    .endr
+    ld de, (RotoX)
+    ex de, hl
+    or a
+    sbc hl, de
+    ld (RotoX), hl
+
+    pop de
+    ld a, (RotoTX)
+    ld c, d
+    ld b, a
+    call FPMultiplySignedBByC
+    .repeat 3
+        add hl, hl
+    .endr
+    ld de, (RotoY)
+    ex de, hl
+    add hl, de
+    ld (RotoY), hl
 
     ; precaclulate increments for one line
 
@@ -2996,6 +3086,129 @@ RotoSequenceOne:
     .db $80     ; flags
 RotoSequenceEnd:
 
+PM7Sequence:
+    .db 2       ; beats per step
+    .db 0       ; rotation inc
+    .db 0       ; scale inc
+    .db 16       ; x inc
+    .db 0       ; y inc
+    .db 0       ; rax inc
+    .db 0       ; ray inc
+    .db 0       ; rbx inc
+    .db 0       ; rby inc
+    .db 1       ; flags
+PM7SequenceOne:    
+    .db 2       ; beats per step
+    .db 0       ; rotation inc
+    .db -12      ; scale inc
+    .db 16      ; x inc
+    .db 0       ; y inc
+    .db 0       ; rax inc
+    .db 0       ; ray inc
+    .db 0       ; rbx inc
+    .db 0       ; rby inc
+    .db 0       ; flags
+
+    .db 1       ; beats per step
+    .db 0       ; rotation inc
+    .db -8      ; scale inc
+    .db 16      ; x inc
+    .db 0       ; y inc
+    .db 0       ; rax inc
+    .db 0       ; ray inc
+    .db 0       ; rbx inc
+    .db 0       ; rby inc
+    .db 0       ; flags
+
+    .db 1       ; beats per step
+    .db 0       ; rotation inc
+    .db -4      ; scale inc
+    .db 16      ; x inc
+    .db 0       ; y inc
+    .db 0       ; rax inc
+    .db 0       ; ray inc
+    .db 0       ; rbx inc
+    .db 0       ; rby inc
+    .db 0       ; flags
+
+    .db 2       ; beats per step
+    .db 0       ; rotation inc
+    .db 6       ; scale inc
+    .db 10      ; x inc
+    .db 0       ; y inc
+    .db 0       ; rax inc
+    .db 0       ; ray inc
+    .db 0       ; rbx inc
+    .db 0       ; rby inc
+    .db 0       ; flags
+
+    .db 1       ; beats per step
+    .db 2       ; rotation inc
+    .db 12      ; scale inc
+    .db 10      ; x inc
+    .db 0       ; y inc
+    .db 0       ; rax inc
+    .db 0       ; ray inc
+    .db 0       ; rbx inc
+    .db 0       ; rby inc
+    .db 0       ; flags
+
+    .db 3       ; beats per step
+    .db 1       ; rotation inc
+    .db 24      ; scale inc
+    .db 15      ; x inc
+    .db 0       ; y inc
+    .db 0       ; rax inc
+    .db 0       ; ray inc
+    .db 0       ; rbx inc
+    .db 0       ; rby inc
+    .db 0       ; flags
+
+    .db 4       ; beats per step
+    .db 0       ; rotation inc
+    .db 00      ; scale inc
+    .db 20      ; x inc
+    .db 0       ; y inc
+    .db 0       ; rax inc
+    .db 0       ; ray inc
+    .db 0       ; rbx inc
+    .db 0       ; rby inc
+    .db 0       ; flags
+
+    .db 2       ; beats per step
+    .db -1       ; rotation inc
+    .db -8      ; scale inc
+    .db 30      ; x inc
+    .db 0       ; y inc
+    .db 0       ; rax inc
+    .db 0       ; ray inc
+    .db 0       ; rbx inc
+    .db 0       ; rby inc
+    .db 0       ; flags
+
+    .db 4       ; beats per step
+    .db 0       ; rotation inc
+    .db 0      ; scale inc
+    .db 30      ; x inc
+    .db 0       ; y inc
+    .db 0       ; rax inc
+    .db 0       ; ray inc
+    .db 0       ; rbx inc
+    .db 0       ; rby inc
+    .db 0       ; flags
+
+    .db 255     ; beats per step
+    .db 0       ; rotation inc
+    .db 0       ; scale inc
+    .db 0       ; x inc
+    .db 0       ; y inc
+    .db 0       ; rax inc
+    .db 0       ; ray inc
+    .db 0       ; rbx inc
+    .db 0       ; rby inc
+    .db $80*0     ; flags
+PM7SequenceEnd:
+
 .org $3a00
 EffectsSequence:
 ; .dw RotoZoomMonoFB
@@ -3008,18 +3221,8 @@ EffectsSequence:
 ; .dw SetDummySpriteTable
 ; .dw 0
 
-.dw Fadein
-.dw PseudoMode7Init
-.dw NullSub
-.dw 0
-
 .dw PseudoMode7MonoFB
-.dw NullSub
-.dw NullSub
-.dw 0
-
-.dw Fadeout
-.dw NullSub
+.dw PseudoMode7Init
 .dw SetDummySpriteTable
 .dw 0
 
