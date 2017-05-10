@@ -307,6 +307,7 @@ banks 16
     RotoRAMBakeIncs   dsb 256 ; align 256
     RotoRAMBakeIncsEnd .
     RotoPrecalcData   dsb 256 ; align 256
+    PM7SAT            dsb 256 ; align 256
 
     RotoRot           dw ; (8.8 fixed point)
     RotoScl           dw ; (8.8 fixed point)
@@ -472,17 +473,12 @@ p0:
     ld a, $82
     out (VDPControl), a
 
-/*
     ; Effect switcher
     
     in a, (IOPortA)
     ld c, a
     bit 5, c
     jp z, NextEffect_JP
-
-    ld a, (CurEffect)
-    cp 1
-    jp z, ++
 
     ; Roto / PM7 controls
 
@@ -529,35 +525,6 @@ p0:
 
     jp p1
    
-++:    
-    ; VB controls
-
-    ld a, c
-    bit 4, c
-    jp nz, +
-    ld hl, VBRZ
-    inc (hl)
-+:    
-    ld hl, VBRY
-    rrca
-    jp c, +
-    dec (hl)
-+:   
-    rrca
-    jp c, +
-    inc (hl)
-+:   
-    ld hl, VBRX
-    rrca
-    jp c, +
-    dec (hl)
-+:   
-    rrca
-    jp c, +
-    inc (hl)
-+:   
-*/
-
 p1:
     call CurEffectUpdate
     jp MainLoop
@@ -1131,6 +1098,7 @@ FadeoutBeat:
     or a
     jp z, NextEffect_JP
     ret
+    
 ;==============================================================
 ; 2D particles code
 ;==============================================================
@@ -2667,8 +2635,22 @@ PseudoMode7Init:
 
     ; Load palette
     memcpy FadeinPalette, RotoPalette, TilePaletteSize
-    memcpy FadeinPalette + TilePaletteSize, ColPalette, TilePaletteSize
 
+    ; robots slot
+    ld a, 12
+    ld (MapperSlot1), a
+
+    ; load tiles (Flying robots)
+    SetVDPAddress $2000 | VRAMWrite
+    ld hl,RobFlyTiles
+    ld de,RobFlyTilesSize
+    CopyToVDP
+
+    ; Load palette (Flying robots)
+    memcpy FadeinPalette + TilePaletteSize, RobFlyPalette, TilePaletteSize
+
+    memcpy PM7SAT, RobFlySAT, 256
+    
     ; texture slot
     ld a, 3
     ld (MapperSlot1), a
@@ -2681,11 +2663,24 @@ PseudoMode7Init:
     ld (RotoX), hl
     ld (RotoY), hl
     
+    ; scroll X
     ld a, $80
     out (VDPControl), a
     ld a, $88
     out (VDPControl), a
     
+    ld a, %1100010
+;          ||||||`- Zoomed sprites -> 16x16 pixels
+;          |||||`-- Doubled sprites -> 2 tiles per sprite, 8x16
+;          ||||`--- Mega Drive mode 5 enable
+;          |||`---- 30 row/240 line mode
+;          ||`----- 28 row/224 line mode
+;          |`------ VBlank interrupts
+;          `------- Enable display
+    out (VDPControl), a
+    ld a, $81
+    out (VDPControl), a
+
     ret
     
 PM7ComputePerLineIncs:
@@ -2759,6 +2754,16 @@ PM7ComputePerLineIncsSimple:
     ret
 
 PseudoMode7MonoFB:
+
+    ; upload current sat to VDP
+    
+    SetVDPAddress $3f00 | VRAMWrite
+    ld hl, PM7SAT
+    ld c, VDPData
+    .repeat 256
+        outi
+    .endr
+
 
     ; precaclulate increments for one line
 
@@ -2987,30 +2992,30 @@ RotoSequenceEnd:
 
 .org $3a00
 EffectsSequence:
-.dw RotoZoomMonoFB
-.dw RotoZoomInit
+; .dw RotoZoomMonoFB
+; .dw RotoZoomInit
+; .dw NullSub
+; .dw 0
+
+; .dw VectorBalls
+; .dw VectorBallsInit
+; .dw SetDummySpriteTable
+; .dw 0
+
+.dw Fadein
+.dw PseudoMode7Init
 .dw NullSub
 .dw 0
 
-.dw VectorBalls
-.dw VectorBallsInit
-.dw SetDummySpriteTable
+.dw PseudoMode7MonoFB
+.dw NullSub
+.dw NullSub
 .dw 0
 
-; .dw Fadein
-; .dw PseudoMode7Init
-; .dw NullSub
-; .dw 0
-
-; .dw PseudoMode7MonoFB
-; .dw NullSub
-; .dw NullSub
-; .dw 0
-
-; .dw Fadeout
-; .dw NullSub
-; .dw ClearTileMap
-; .dw 0
+.dw Fadeout
+.dw NullSub
+.dw ClearTileMap
+.dw 0
 
 .dw FadeinBeat
 .dw ParticlesLoadVRAM
@@ -3188,6 +3193,15 @@ CheckPalette:
 
 VBTiles:
 .incbin "vb/vb.sms" fsize VBTilesSize
+
+RobFlyTiles:
+.incbin "test_gfx/robot3 (tiles).bin" fsize RobFlyTilesSize
+RobFlyPalette:
+.incbin "test_gfx/robot3 (palette).bin"
+
+RobFlySAT:
+.incbin "test_gfx/robot3 (sat).bin"
+
 
 .bank 13 slot 1
 .org $0000
