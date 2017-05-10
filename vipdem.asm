@@ -1270,33 +1270,6 @@ ParticlesInit:
 +:    
 ++:
 
-    ld a, %1100000
-;          ||||||`- Zoomed sprites -> 16x16 pixels
-;          |||||`-- Doubled sprites -> 2 tiles per sprite, 8x16
-;          ||||`--- Mega Drive mode 5 enable
-;          |||`---- 30 row/240 line mode
-;          ||`----- 28 row/224 line mode
-;          |`------ VBlank interrupts
-;          `------- Enable display
-    out (VDPControl), a
-    ld a, $81
-    out (VDPControl), a
-    
-    ; SAT address ($3f00)
-    ld a, $7f
-    out (VDPControl), a
-    ld a, $85
-    out (VDPControl), a
-    
-    ; SAT terminator
-    ld hl, PartSAT
-    ld a, (PartCount)
-    AddAToHL
-    ld a, $d0
-    ld (hl), a
-    ld hl, PartSAT ; for first update
-    ld (hl), a
-    
     ld a, (CurBeatIdx)
     ld (PartInitialBeat), a
     
@@ -1338,6 +1311,39 @@ ParticlesLoadVRAM:
     ; Load palette (VectorBalls)
     memcpy LocalPalette + TilePaletteSize, VBPalette, TilePaletteSize
 
+    ld a, %1100000
+;          ||||||`- Zoomed sprites -> 16x16 pixels
+;          |||||`-- Doubled sprites -> 2 tiles per sprite, 8x16
+;          ||||`--- Mega Drive mode 5 enable
+;          |||`---- 30 row/240 line mode
+;          ||`----- 28 row/224 line mode
+;          |`------ VBlank interrupts
+;          `------- Enable display
+    out (VDPControl), a
+    ld a, $81
+    out (VDPControl), a
+    
+    ; x scroll = 0
+    ld a, $00
+    out (VDPControl), a
+    ld a, $88
+    out (VDPControl), a
+
+    ; SAT address ($3f00)
+    ld a, $7f
+    out (VDPControl), a
+    ld a, $85
+    out (VDPControl), a
+    
+    ; SAT terminator
+    ld hl, PartSAT
+    ld a, (PartCount)
+    AddAToHL
+    ld a, $d0
+    ld (hl), a
+    ld hl, PartSAT ; for first update
+    ld (hl), a
+    
     ret
     
 Particles:
@@ -3014,7 +3020,7 @@ EffectsSequence:
 
 .dw Fadeout
 .dw NullSub
-.dw ClearTileMap
+.dw SetDummySpriteTable
 .dw 0
 
 .dw FadeinBeat
