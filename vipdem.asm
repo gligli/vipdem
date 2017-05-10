@@ -2943,7 +2943,7 @@ RotoSequenceEnd:
 EffectsSequence:
 .dw RotoZoomMonoFB
 .dw RotoZoomInit
-.dw ClearTileMap
+.dw NullSub
 .dw 0
 
 .dw VectorBalls
