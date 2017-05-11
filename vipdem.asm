@@ -2861,6 +2861,20 @@ PseudoMode7MonoFB:
     call Fadeout
     jp ++
 +:    
+    push af
+    
+    ; rotating flames colors (while no fadein/out)
+    ld a, (CurFrameIdx)
+    and $03
+    ld hl, RobFlyFlamesPal
+    AddAToHL
+    ld de, LocalPalette + VDPPaletteSize - 4
+    ld bc, 3
+    ldir
+    call UploadPalette
+    
+    pop af
+    
     bit 2, a
     jp z, +
     ld a, 15
@@ -2902,7 +2916,7 @@ PseudoMode7MonoFB:
     ex de, hl
     add hl, de
     ld (RotoY), hl
-
+    
     ; upload current tilemap to VDP
     ld c, VDPData
     .repeat PM7LineCount index line
@@ -3327,6 +3341,9 @@ VDPInitData:
 .db $14,$80,$00,$81,$ff,$82,$51,$85,$ff,$86,$ff,$87,$00,$88,$00,$89,$ff,$8a
 VDPInitDataEnd:
 
+RobFlyFlamesPal:
+.db 63, 47, 27, 31, 63, 47, 27
+
 ;==============================================================
 ; Data (LUTs)
 ;==============================================================
@@ -3466,7 +3483,6 @@ RobFlyPalette:
 
 RobFlySAT:
 .incbin "test_gfx/robot3 (sat).bin"
-
 
 .bank 13 slot 1
 .org $0000
