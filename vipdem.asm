@@ -3156,7 +3156,7 @@ PM7SequenceOne:
     .db 0       ; ray inc
     .db 0       ; rbx inc
     .db 0       ; rby inc
-    .db 0       ; flags
+    .db 1       ; flags
 
     .db 2       ; beats per step
     .db 0       ; rotation inc
