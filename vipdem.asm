@@ -2289,7 +2289,7 @@ RotoZoomInit:
     memcpy FadeinPalette + TilePaletteSize, ColPalette, TilePaletteSize
 
     ; texture slot
-    ld a, 0
+    ld a, 3
     ld (MapperSlot1), a
 
     ; x scroll = 0
@@ -2337,7 +2337,9 @@ RotoZoomInit:
     ; coords init
     ld hl, $0000
     ld (RotoRot), hl
+    ld hl, $f800
     ld (RotoX), hl
+    ld hl, $fc00
     ld (RotoY), hl
     ld hl, $0100
     ld (RotoScl), hl
@@ -3171,7 +3173,7 @@ RotoSequenceOne:
     .db 7       ; beats per step
     .db 0       ; rotation inc
     .db 0       ; scale inc
-    .db 64      ; x inc
+    .db 96      ; x inc
     .db 32      ; y inc
     .db 1       ; flags
 
@@ -3183,7 +3185,7 @@ RotoSequenceOne:
     .db 0       ; flags
 
     .db 8       ; beats per step
-    .db 2       ; rotation inc
+    .db 1       ; rotation inc
     .db 6       ; scale inc
     .db 16      ; x inc
     .db 32      ; y inc
@@ -3192,14 +3194,14 @@ RotoSequenceOne:
     .db 7       ; beats per step
     .db 2       ; rotation inc
     .db -12     ; scale inc
-    .db -32     ; x inc
-    .db 64      ; y inc
+    .db 48      ; x inc
+    .db 32      ; y inc
     .db 0       ; flags
 
     .db 1       ; beats per step
     .db 2       ; rotation inc
     .db -12     ; scale inc
-    .db -32     ; x inc
+    .db 48      ; x inc
     .db 64      ; y inc
     .db 2       ; flags
 
@@ -3359,15 +3361,15 @@ PM7SequenceEnd:
 
 .org $3a00
 EffectsSequence:
-; .dw RotoZoomMonoFB
-; .dw RotoZoomInit
-; .dw NullSub
-; .dw 0
+.dw RotoZoomMonoFB
+.dw RotoZoomInit
+.dw NullSub
+.dw 0
 
-; .dw VectorBalls
-; .dw VectorBallsInit
-; .dw SetDummySpriteTable
-; .dw 0
+.dw VectorBalls
+.dw VectorBallsInit
+.dw SetDummySpriteTable
+.dw 0
 
 .dw PseudoMode7MonoFB
 .dw PseudoMode7Init
@@ -3459,10 +3461,10 @@ CosLUT:
 
 RotoPalette:
 .repeat 4
-    .db 32
-    .db 63
     .db 16
-    .db 47
+    .db 62
+    .db 16
+    .db 27
 .endr
 PM7Palette:
 .repeat 4
@@ -3598,6 +3600,10 @@ jp interrupt
 .org $0066
 rst 0
 .incbin "test_gfx/check_tex.bin" skip $67
+
+.bank 3 slot 1
+.org $0000
+.incbin "test_gfx/z80_tex.bin"
 
 .bank 14 slot 1
 .org $0000
