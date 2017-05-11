@@ -276,7 +276,7 @@ banks 16
 .macro memset args dest, val, len
     ld hl, dest
     ld de, dest + 1
-    ld bc, len
+    ld bc, len - 1
     ld a, val
     ld (hl), a
     ldir
@@ -2235,13 +2235,15 @@ RotoRAMCodeBakePos4:
     ld l, c
 .endm
 
-.macro RotoSeqAddToCoord args addr
+.macro RotoSeqAddToCoord args addr, times
     ld a, (hl)
     inc hl
     ld de, (addr)
     SignExtendAToBC
     ex de, hl
-    add hl, bc
+    .repeat times
+        add hl, bc
+    .endr
     ex de, hl
     ld (addr), de
 .endm
@@ -2419,10 +2421,10 @@ RotoZoomMonoFB:
 +:
     inc hl
 
-    RotoSeqAddToCoord RotoRot
-    RotoSeqAddToCoord RotoScl
-    RotoSeqAddToCoord RotoX
-    RotoSeqAddToCoord RotoY
+    RotoSeqAddToCoord RotoRot, 1
+    RotoSeqAddToCoord RotoScl, 1
+    RotoSeqAddToCoord RotoX, 1
+    RotoSeqAddToCoord RotoY, 1
     
     ld a, (hl)
     bit 2, a
@@ -2653,6 +2655,26 @@ RotoRAMCodeRet:
     or (hl)
 .endm
 
+.macro PM7SATYSet args offset, len
+    ld hl, PM7SAT + offset
+    ld de, PM7SAT + offset + 1
+    ld bc, len - 1
+    ld (hl), a
+    ldir
+.endm
+
+.macro PM7SATXSet args offset
+    ld (hl), a
+    add hl, de
+    ld (hl), a
+    add a, offset
+    add hl, de
+    ld (hl), a
+    add hl, de
+    ld (hl), a
+    sub offset
+.endm
+
 PseudoMode7Init:
     ld a, 1
     ld (MapperSlot1), a
@@ -2731,6 +2753,13 @@ PseudoMode7Init:
     ld (RotoX), hl
     ld hl, $e000
     ld (RotoY), hl
+    ld hl, $7000
+    ld (RobAY), hl
+    ld (RobBY), hl
+    ld hl, $3000
+    ld (RobAX), hl
+    ld hl, $b000
+    ld (RobBX), hl
 
     ; sequencer init
     ld hl, PM7Sequence
@@ -2842,14 +2871,14 @@ PseudoMode7MonoFB:
 +:
     inc hl
     
-    RotoSeqAddToCoord RotoRot
-    RotoSeqAddToCoord RotoScl
-    RotoSeqLoadCoord RotoTX
-    RotoSeqLoadCoord RotoTY
-    RotoSeqAddToCoord RobAX
-    RotoSeqAddToCoord RobAY
-    RotoSeqAddToCoord RobBX
-    RotoSeqAddToCoord RobBY
+    RotoSeqAddToCoord RotoRot, 1
+    RotoSeqAddToCoord RotoScl, 1
+    RotoSeqLoadCoord RotoTX, 1
+    RotoSeqLoadCoord RotoTY, 1
+    RotoSeqAddToCoord RobAX, 2
+    RotoSeqAddToCoord RobAY, 2
+    RotoSeqAddToCoord RobBX, 2
+    RotoSeqAddToCoord RobBY, 2
     
     ld a, (hl)
     bit 0, a
@@ -2929,6 +2958,54 @@ PseudoMode7MonoFB:
             in (c)
         .endr
     .endr
+
+    ; Robots animation
+    
+    ld a, (RobAY + 1)
+    PM7SATYSet $00, 4
+    add a, $10
+    PM7SATYSet $08, 4
+    add a, $10
+    PM7SATYSet $10, 4
+    add a, $10
+    PM7SATYSet $18, 4
+    
+    ld a, (RobBY + 1)
+    PM7SATYSet $04, 4
+    add a, $10
+    PM7SATYSet $0c, 4
+    add a, $10
+    PM7SATYSet $14, 4
+    add a, $10
+    PM7SATYSet $1c, 4
+    
+    ld a, (RobAX + 1)
+    ld de, $10
+    ld hl, PM7SAT + $80
+    PM7SATXSet -4
+    ld hl, PM7SAT + $82
+    add a, 8
+    PM7SATXSet -4
+    ld hl, PM7SAT + $84
+    add a, 8
+    PM7SATXSet 3
+    ld hl, PM7SAT + $86
+    add a, 8
+    PM7SATXSet 3
+
+    ld a, (RobBX + 1)
+    ld de, $10
+    ld hl, PM7SAT + $88
+    PM7SATXSet -4
+    ld hl, PM7SAT + $8a
+    add a, 8
+    PM7SATXSet -4
+    ld hl, PM7SAT + $8c
+    add a, 8
+    PM7SATXSet 3
+    ld hl, PM7SAT + $8e
+    add a, 8
+    PM7SATXSet 3
 
     ; X scroll
     ld a, (RotoRot)
@@ -3135,38 +3212,38 @@ RotoSequenceOne:
 RotoSequenceEnd:
 
 PM7Sequence:
-    .db 2       ; beats per step
+    .db 3       ; beats per step
     .db 0       ; rotation inc
     .db 0       ; scale inc
     .db 3       ; x inc
     .db 0       ; y inc
-    .db 0       ; rax inc
+    .db 127     ; rax inc
     .db 0       ; ray inc
-    .db 0       ; rbx inc
+    .db -127    ; rbx inc
     .db 0       ; rby inc
     .db 1       ; flags
 PM7SequenceOne:    
 
-    .db 2       ; beats per step
+    .db 1       ; beats per step
     .db 0       ; rotation inc
-    .db -6      ; scale inc
+    .db -8      ; scale inc
     .db 3       ; x inc
     .db 0       ; y inc
     .db 0       ; rax inc
-    .db 0       ; ray inc
+    .db 127     ; ray inc
     .db 0       ; rbx inc
-    .db 0       ; rby inc
-    .db 1       ; flags
+    .db 127     ; rby inc
+    .db 0       ; flags
 
     .db 2       ; beats per step
     .db 0       ; rotation inc
-    .db -2      ; scale inc
+    .db -4      ; scale inc
     .db 3       ; x inc
     .db 0       ; y inc
     .db 0       ; rax inc
-    .db 0       ; ray inc
+    .db 64      ; ray inc
     .db 0       ; rbx inc
-    .db 0       ; rby inc
+    .db 64      ; rby inc
     .db 0       ; flags
 
     .db 2       ; beats per step
@@ -3185,9 +3262,9 @@ PM7SequenceOne:
     .db 0       ; scale inc
     .db 3       ; x inc
     .db 0       ; y inc
-    .db 0       ; rax inc
+    .db -32     ; rax inc
     .db 0       ; ray inc
-    .db 0       ; rbx inc
+    .db -64    ; rbx inc
     .db 0       ; rby inc
     .db 0       ; flags
 
@@ -3196,9 +3273,9 @@ PM7SequenceOne:
     .db 0       ; scale inc
     .db 4       ; x inc
     .db 0       ; y inc
-    .db 0       ; rax inc
+    .db 32      ; rax inc
     .db 0       ; ray inc
-    .db 0       ; rbx inc
+    .db 64     ; rbx inc
     .db 0       ; rby inc
     .db 0       ; flags
 
@@ -3207,9 +3284,9 @@ PM7SequenceOne:
     .db 0       ; scale inc
     .db 3       ; x inc
     .db 0       ; y inc
-    .db 0       ; rax inc
+    .db 127       ; rax inc
     .db 0       ; ray inc
-    .db 0       ; rbx inc
+    .db 64       ; rbx inc
     .db 0       ; rby inc
     .db 4       ; flags
 
@@ -3218,10 +3295,10 @@ PM7SequenceOne:
     .db 2       ; scale inc
     .db 5       ; x inc
     .db 0       ; y inc
-    .db 0       ; rax inc
-    .db 0       ; ray inc
-    .db 0       ; rbx inc
-    .db 0       ; rby inc
+    .db -77     ; rax inc
+    .db -32     ; ray inc
+    .db -39     ; rbx inc
+    .db -32     ; rby inc
     .db 0       ; flags
 
     .db 4       ; beats per step
@@ -3229,10 +3306,10 @@ PM7SequenceOne:
     .db -1      ; scale inc
     .db 4       ; x inc
     .db 0       ; y inc
-    .db 0       ; rax inc
-    .db 0       ; ray inc
-    .db 0       ; rbx inc
-    .db 0       ; rby inc
+    .db -32     ; rax inc
+    .db 16      ; ray inc
+    .db -64     ; rbx inc
+    .db 16      ; rby inc
     .db 0       ; flags
 
     .db 4       ; beats per step
@@ -3241,9 +3318,9 @@ PM7SequenceOne:
     .db 5       ; x inc
     .db 0       ; y inc
     .db 0       ; rax inc
-    .db 0       ; ray inc
+    .db -96     ; ray inc
     .db 0       ; rbx inc
-    .db 0       ; rby inc
+    .db -96     ; rby inc
     .db 0       ; flags
 
     .db 2       ; beats per step
@@ -3251,10 +3328,10 @@ PM7SequenceOne:
     .db 6       ; scale inc
     .db 6       ; x inc
     .db 0       ; y inc
-    .db 0       ; rax inc
-    .db 0       ; ray inc
-    .db 0       ; rbx inc
-    .db 0       ; rby inc
+    .db -64     ; rax inc
+    .db -96     ; ray inc
+    .db 127     ; rbx inc
+    .db -96     ; rby inc
     .db 0       ; flags
 
     .db 2       ; beats per step
@@ -3262,10 +3339,10 @@ PM7SequenceOne:
     .db 0       ; scale inc
     .db 7       ; x inc
     .db 0       ; y inc
-    .db 0       ; rax inc
-    .db 0       ; ray inc
-    .db 0       ; rbx inc
-    .db 0       ; rby inc
+    .db -127    ; rax inc
+    .db -127    ; ray inc
+    .db 127     ; rbx inc
+    .db -127    ; rby inc
     .db 2       ; flags
 
     .db 255     ; beats per step
@@ -3282,15 +3359,15 @@ PM7SequenceEnd:
 
 .org $3a00
 EffectsSequence:
-.dw RotoZoomMonoFB
-.dw RotoZoomInit
-.dw NullSub
-.dw 0
+; .dw RotoZoomMonoFB
+; .dw RotoZoomInit
+; .dw NullSub
+; .dw 0
 
-.dw VectorBalls
-.dw VectorBallsInit
-.dw SetDummySpriteTable
-.dw 0
+; .dw VectorBalls
+; .dw VectorBallsInit
+; .dw SetDummySpriteTable
+; .dw 0
 
 .dw PseudoMode7MonoFB
 .dw PseudoMode7Init
