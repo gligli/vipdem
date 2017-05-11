@@ -288,6 +288,10 @@ banks 16
 
 ; Global variables
 .enum $c000 export
+    XScroll           dsb 192
+    LocalPalette      dsb 32
+    FadeinPalette     dsb 32
+
     CurBeatIdx        dw
     CurFrameIdx       dw
     SPSave            dw
@@ -299,14 +303,12 @@ banks 16
     HadVBlank         db  
     BeatCounter       db
     UseXScroll        db  
-    XScroll           db  
-    IntoRobCurFrame   db  
-    LocalPalette      dsb 32
-    FadeinPalette     dsb 32
+    IntroRobCurFrame  db  
+    IntroDissCurFrame db  
 .ende
 
 ; RotoZoom / PseudoMode7
-.enum $c100 export
+.enum $c200 export
     RotoRAMBakeIncs   dsb 256 ; align 256
     RotoRAMBakeIncsEnd .
     RotoPrecalcData   dsb 256 ; align 256
@@ -334,7 +336,7 @@ banks 16
 .ende
 
 ; 2D particles
-.enum $c100 export
+.enum $c200 export
     PartXH            dsb 256
     PartXL            dsb 256
     PartYH            dsb 256
@@ -350,7 +352,7 @@ banks 16
 .ende
 
 ; VectorBalls
-.enum $c100 export
+.enum $c200 export
     VBX               dsb 256
     VBY               dsb 256
     VBZ               dsb 256
@@ -374,23 +376,18 @@ interrupt:
     push af
     push hl
 
-    ; for PM7 scroll
-    ld a, (UseXScroll)
-    or a
-    jp z, +
-    ld a, (XScroll)
-    out (VDPControl), a
-    ld a, $88
-    out (VDPControl), a
-+:
-
     in a, (VDPControl) ;ack vdp int
     and $80
     ld (HadVBlank), a
-    jp m, MusicUpdate
+    jp m, +
 
-    ; for PM7 scroll
-    ld a, $80
+    ; line interrupt X scroll
+    
+    in a, (VDPScanline)
+    ld l, a
+    ld h, >XScroll
+    ld a, (hl)
+    
     out (VDPControl), a
     ld a, $88
     out (VDPControl), a
@@ -399,6 +396,18 @@ interrupt:
     pop af
     ei
     ret
++:
+    ; for X scroll
+
+    ld a, (UseXScroll)
+    or a
+    jp z, MusicUpdate
+    ld a, (XScroll)
+    out (VDPControl), a
+    ld a, $88
+    out (VDPControl), a
+
+    jp MusicUpdate    
 
 init_tab: ; table must exist within this bank
     .db $00, $00, $01, $02
@@ -1325,7 +1334,9 @@ Intro:
     cp 11
     jp nc, +
 
-    ld hl, IntoRobCurFrame
+    ; robots movement
+    
+    ld hl, IntroRobCurFrame
     ld a, (hl)
     inc a
     ld (hl), a
@@ -1374,8 +1385,59 @@ Intro:
     out (VDPControl), a
 
 +:
+    ld a, (CurBeatIdx)
+    cp 11
+    jp c, ++
 
+    ld a, 1
+    ld (UseXScroll), a
 
+    ; line int every line
+    ld a, 0
+    out (VDPControl), a
+    ld a, $8a
+    out (VDPControl), a
+    
+    ; sinus "dissolve"
+    
+    ld hl, IntroDissCurFrame
+    ld a, (hl)
+    inc a
+    ld (hl), a
+    
+    ld e, a
+    add a, a
+    ld ixl, a
+    add a, a
+    ld ixh, a
+    
+.repeat Height / 5 index line
+    ld a, line * 2
+    add a, ixl
+    ld c, a
+    GetSinC
+    add a, 128
+    
+    ld h, a
+    call MultiplyUnsignedHByE
+    ld a, h
+    
+    ld (XScroll + line * 2), a
+    
+    ld a, line * 2 + 1
+    add a, ixh
+    ld c, a
+    GetCosC
+    add a, 128
+
+    ld h, a
+    call MultiplyUnsignedHByE
+    ld a, h
+
+    ld (XScroll + line * 2 + 1), a
+.endr
+    
+++:
     ld a, (CurBeatIdx)
     cp 16
     jp nc, FadeoutSloBeat
@@ -2519,6 +2581,30 @@ RotoRAMCodeBakePos4:
 .endm
     
 RotoZoomInit:
+    ; no X scroll
+    xor a
+    ld (UseXScroll), a
+
+    ; no line int
+    ld a, $ff
+    out (VDPControl), a
+    ld a, $8a
+    out (VDPControl), a
+
+    ; y scroll =  0
+    ld a, $00
+    out (VDPControl), a
+    ld a, $89
+    out (VDPControl), a
+
+    ; x scroll = 0
+    ld a, $00
+    out (VDPControl), a
+    ld a, $88
+    out (VDPControl), a
+
+    memset XScroll, 0, Height
+    
     ld a, 1
     ld (MapperSlot1), a
    
@@ -2555,18 +2641,6 @@ RotoZoomInit:
     ; texture slot
     ld a, 3
     ld (MapperSlot1), a
-
-    ; y scroll =  0
-    ld a, $00
-    out (VDPControl), a
-    ld a, $89
-    out (VDPControl), a
-
-    ; x scroll = 0
-    ld a, $00
-    out (VDPControl), a
-    ld a, $88
-    out (VDPControl), a
 
     ; copy code to RAM, duplicating it
     ld de, RAMCode
@@ -3058,6 +3132,7 @@ PseudoMode7Init:
     ld a, 14
     ld (MapperSlot1), a
 
+    memset XScroll, $80, Height
     ld a, 1
     ld (UseXScroll), a
 
