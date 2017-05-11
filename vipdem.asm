@@ -467,11 +467,6 @@ main:
     ei
 
 Reinit:
-    ; tmp delay
-    ld b, 12
--:
-    WaitVBlank 0
-    djnz -
 
     ; Effect init
     call CurEffectInit
@@ -501,7 +496,7 @@ p0:
 +:        
 
     ; Roto / PM7 controls
-
+/* 
     ld ixl, c
     bit 4, c
     jp nz, +
@@ -543,7 +538,7 @@ p0:
 +:
     ld (RotoRot), hl
 
-    jp p1
+    jp p1 */
    
 p1:
     call CurEffectUpdate
