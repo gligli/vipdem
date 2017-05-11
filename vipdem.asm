@@ -298,6 +298,8 @@ banks 16
     CurEffect         db
     HadVBlank         db  
     BeatCounter       db
+    UseXScroll        db  
+    XScroll           db  
     LocalPalette      dsb 32
     FadeinPalette     dsb 32
 .ende
@@ -308,7 +310,8 @@ banks 16
     RotoRAMBakeIncsEnd .
     RotoPrecalcData   dsb 256 ; align 256
     PM7SAT            dsb 256 ; align 256
-    PM7TM             dsb 1536    
+    PM7TM             dsb PM7LineCount * 64 + 64    
+    PM7TMEnd          .
 
     RotoRot           dw ; (8.8 fixed point)
     RotoScl           dw ; (8.8 fixed point)
@@ -369,10 +372,28 @@ banks 16
 interrupt:
     push af
     push hl
+
+    ; for PM7 scroll
+    ld a, (UseXScroll)
+    or a
+    jp z, +
+    ld a, (XScroll)
+    out (VDPControl), a
+    ld a, $88
+    out (VDPControl), a
++:
+
     in a, (VDPControl) ;ack vdp int
     and $80
     ld (HadVBlank), a
     jp m, MusicUpdate
+
+    ; for PM7 scroll
+    ld a, $80
+    out (VDPControl), a
+    ld a, $88
+    out (VDPControl), a
+
     pop hl
     pop af
     ei
@@ -467,16 +488,6 @@ p0:
     ld a, (CurFrameIdx)
     inc a
     ld (CurFrameIdx), a
-
-    ; VDP tilemap pointer (double buffering)
-    and 1
-    ld a, $ff
-    jr z, +
-    ld a, $fd
-+:
-    out (VDPControl), a
-    ld a, $82
-    out (VDPControl), a
 
     ; Effect switcher
     
@@ -1285,6 +1296,22 @@ ParticlesInit:
     ret
 
 ParticlesLoadVRAM:
+    ; no X scroll
+    xor a
+    ld (UseXScroll), a
+
+    ; x scroll = 0
+    ld a, $00
+    out (VDPControl), a
+    ld a, $88
+    out (VDPControl), a
+
+    ; no line int
+    ld a, $ff
+    out (VDPControl), a
+    ld a, $8a
+    out (VDPControl), a
+
     ld a, 13
     ld (MapperSlot1), a
     
@@ -1294,12 +1321,7 @@ ParticlesLoadVRAM:
     ld de,StarsTilesSize
     CopyToVDP
     
-    ; load tilemaps (Checkerboard)
-    SetVDPAddress $3000 | VRAMWrite
-    ld hl,StarsTileMap
-    ld de,TileMapSize
-    CopyToVDP
-
+    ; load tilemap (Stars)
     SetVDPAddress $3800 | VRAMWrite
     ld hl,StarsTileMap
     ld de,TileMapSize
@@ -1332,12 +1354,6 @@ ParticlesLoadVRAM:
     ld a, $81
     out (VDPControl), a
     
-    ; x scroll = 0
-    ld a, $00
-    out (VDPControl), a
-    ld a, $88
-    out (VDPControl), a
-
     ; SAT address ($3f00)
     ld a, $7f
     out (VDPControl), a
@@ -1672,12 +1688,7 @@ VectorBallsInit:
     ld de,CheckTilesSize
     CopyToVDP
     
-    ; load tilemaps (Checkerboard)
-    SetVDPAddress $3000 | VRAMWrite
-    ld hl,CheckTileMap
-    ld de,TileMapSize
-    CopyToVDP
-
+    ; load tilemap (Checkerboard)
     SetVDPAddress $3800 | VRAMWrite
     ld hl,CheckTileMap
     ld de,TileMapSize
@@ -1724,6 +1735,12 @@ VectorBallsInit:
 ;          `------- Enable display
     out (VDPControl), a
     ld a, $81
+    out (VDPControl), a
+
+    ; VDP tilemap pointer
+    ld a, $ff
+    out (VDPControl), a
+    ld a, $82
     out (VDPControl), a
 
     ; SAT address ($3f00)
@@ -2370,6 +2387,16 @@ RotoLoadOtherColTilemap:
     ret
     
 RotoZoomMonoFB:
+    ; VDP tilemap pointer (double buffering)
+    and 1
+    ld a, $ff
+    jr z, +
+    ld a, $fd
++:
+    out (VDPControl), a
+    ld a, $82
+    out (VDPControl), a
+
     ; advance sequencer
 
 -:    
@@ -2626,8 +2653,6 @@ RotoRAMCodeRet:
 .endm
 
 PseudoMode7Init:
-    call ClearTileMap
-    
     ld a, 1
     ld (MapperSlot1), a
 
@@ -2662,18 +2687,10 @@ PseudoMode7Init:
     ; load tiles (Background)
     SetVDPAddress $25c0 | VRAMWrite
     ld hl, PM7BGTiles
-    ld de, $a40
-    CopyToVDP
-    SetVDPAddress $3600 | VRAMWrite
-    ld hl, PM7BGTiles + $a40
-    ld de, $200
+    ld de, PM7BGTilesSize
     CopyToVDP
 
     ; load tilemap (Background)
-    SetVDPAddress $3000 | VRAMWrite
-    ld hl,PM7BGTileMap
-    ld de,TileMapSize / 2
-    CopyToVDP
     SetVDPAddress $3800 | VRAMWrite
     ld hl,PM7BGTileMap
     ld de,TileMapSize / 2
@@ -2683,11 +2700,8 @@ PseudoMode7Init:
     ld a, 14
     ld (MapperSlot1), a
 
-    ; scroll X
-    ld a, $80
-    out (VDPControl), a
-    ld a, $88
-    out (VDPControl), a
+    ld a, 1
+    ld (UseXScroll), a
     
     ld a, %1100010
 ;          ||||||`- Zoomed sprites -> 16x16 pixels
@@ -2701,6 +2715,12 @@ PseudoMode7Init:
     ld a, $81
     out (VDPControl), a
 
+    ; line int
+    ld a, $5f
+    out (VDPControl), a
+    ld a, $8a
+    out (VDPControl), a
+    
     ; coords init
     ld hl, $fec0
     ld (RotoRot), hl
@@ -2883,6 +2903,23 @@ PseudoMode7MonoFB:
     add hl, de
     ld (RotoY), hl
 
+    ; upload current tilemap to VDP
+    ld c, VDPData
+    .repeat PM7LineCount index line
+        SetVDPAddress ($3dc0 - line * 64) | VRAMWrite
+        ld hl, PM7TMEnd - line * 64 - 1
+        .repeat 32
+            outd
+            dec hl
+            in (c)
+        .endr
+    .endr
+
+    ; X scroll
+    ld a, (RotoRot)
+    sub 76
+    ld (XScroll), a
+    
     ; precaclulate increments for one line
 
     ld ix, (RotoX) ; x
@@ -2904,6 +2941,9 @@ PM7PrecalcEnd:
     ld hl, PM7CurLine
     ld (hl), a
     exx
+    
+    ld (SPSave), sp
+    ld sp, PM7TMEnd
 
     ; main loop on lines pairs
 
@@ -2914,30 +2954,6 @@ PM7LineLoop:
     exx
     ld l, (hl)
     ld h, 0
-
-    ; VRAM pointer position
-    push hl
-    dec l
-    ;line index to vram offset (line * 64)
-    add hl, hl
-    add hl, hl
-    add hl, hl
-    add hl, hl
-    add hl, hl
-    add hl, hl
-    dec hl
-    ld a, l
-    out (VDPControl), a
-    
-    ld a, (CurFrameIdx)
-    rrca    
-    ld a, h
-    jr nc, +
-    add a, $08
-+:    
-    add a, >VRAMWrite + $36 - (PM7LineCount >> 2)
-    out (VDPControl), a
-    pop hl
     
     ; for line incs (a * 8)
     ld a, PM7LineCount
@@ -2951,16 +2967,10 @@ PM7LineLoop:
     PM7GetLineIncs
 
     .repeat 32 index x_byte
-        .repeat 4 index x_bit
+        .repeat 8 index x_bit
             PM7GetPixel x_byte * 8 + x_bit
         .endr
-        ex af, af'
-        in a, (VDPData)
-        ex af, af'
-        .repeat 4 index x_bit
-            PM7GetPixel x_byte * 8 + x_bit + 4
-        .endr
-        out (VDPData), a
+        push af
         
         .ifeq x_byte 15
             ; mirror plane
@@ -2981,6 +2991,7 @@ PM7LineLoop:
     exx
     jp nz, PM7LineLoop
 
+    ld sp, (SPSave)
     ret
 
 ;==============================================================
