@@ -1293,6 +1293,15 @@ ParticlesInit:
     ld a, (CurBeatIdx)
     ld (PartInitialBeat), a
     
+    ; SAT terminator
+    ld hl, PartSAT
+    ld a, (PartCount)
+    AddAToHL
+    ld a, $d0
+    ld (hl), a
+    ld hl, PartSAT ; for first update
+    ld (hl), a
+    
     ret
 
 ParticlesLoadVRAM:
@@ -1315,7 +1324,7 @@ ParticlesLoadVRAM:
     ld a, 13
     ld (MapperSlot1), a
     
-    ; load tiles (Checkerboard)
+    ; load tiles (Stars)
     SetVDPAddress $0000 | VRAMWrite
     ld hl,StarsTiles
     ld de,StarsTilesSize
@@ -1327,7 +1336,7 @@ ParticlesLoadVRAM:
     ld de,TileMapSize
     CopyToVDP
     
-    ; Load palette (Checkerboard)
+    ; Load palette (Stars)
     memcpy FadeinPalette, StarsPalette, TilePaletteSize
     
     ld a, 1
@@ -1359,15 +1368,6 @@ ParticlesLoadVRAM:
     out (VDPControl), a
     ld a, $85
     out (VDPControl), a
-    
-    ; SAT terminator
-    ld hl, PartSAT
-    ld a, (PartCount)
-    AddAToHL
-    ld a, $d0
-    ld (hl), a
-    ld hl, PartSAT ; for first update
-    ld (hl), a
     
     ret
     
@@ -2388,6 +2388,7 @@ RotoLoadOtherColTilemap:
     
 RotoZoomMonoFB:
     ; VDP tilemap pointer (double buffering)
+    ld a, (CurFrameIdx)
     and 1
     ld a, $ff
     jr z, +
@@ -2663,7 +2664,7 @@ PseudoMode7Init:
     CopyToVDP
 
     ; Load palette
-    memcpy FadeinPalette, RotoPalette, TilePaletteSize
+    memcpy FadeinPalette, PM7Palette, TilePaletteSize
 
     ; robots slot
     ld a, 12
@@ -3099,28 +3100,28 @@ RotoSequenceOne:
 
     .db 8       ; beats per step
     .db 0       ; rotation inc
-    .db 7       ; scale inc
+    .db 4       ; scale inc
     .db 16      ; x inc
     .db 32      ; y inc
     .db 0       ; flags
 
     .db 8       ; beats per step
     .db 2       ; rotation inc
-    .db 10      ; scale inc
+    .db 6       ; scale inc
     .db 16      ; x inc
     .db 32      ; y inc
     .db 4       ; flags
 
     .db 7       ; beats per step
     .db 2       ; rotation inc
-    .db -19     ; scale inc
+    .db -12     ; scale inc
     .db -32     ; x inc
     .db 64      ; y inc
     .db 0       ; flags
 
     .db 1       ; beats per step
     .db 2       ; rotation inc
-    .db -19     ; scale inc
+    .db -12     ; scale inc
     .db -32     ; x inc
     .db 64      ; y inc
     .db 2       ; flags
@@ -3281,15 +3282,15 @@ PM7SequenceEnd:
 
 .org $3a00
 EffectsSequence:
-; .dw RotoZoomMonoFB
-; .dw RotoZoomInit
-; .dw NullSub
-; .dw 0
+.dw RotoZoomMonoFB
+.dw RotoZoomInit
+.dw NullSub
+.dw 0
 
-; .dw VectorBalls
-; .dw VectorBallsInit
-; .dw SetDummySpriteTable
-; .dw 0
+.dw VectorBalls
+.dw VectorBallsInit
+.dw SetDummySpriteTable
+.dw 0
 
 .dw PseudoMode7MonoFB
 .dw PseudoMode7Init
@@ -3380,6 +3381,13 @@ CosLUT:
 .org $0000
 
 RotoPalette:
+.repeat 4
+    .db 32
+    .db 63
+    .db 16
+    .db 47
+.endr
+PM7Palette:
 .repeat 4
     .db 16
     .db 63
