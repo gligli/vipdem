@@ -1034,7 +1034,7 @@ FadeoutLocalPalette:
     
     ret
     
-FadeinLocalPalette:
+FadeinLocalPaletteBGR:
     ld b, VDPPaletteSize
     ld de, FadeinPalette
     ld hl, LocalPalette
@@ -1086,6 +1086,58 @@ FadeinLocalPalette:
     
     ret
     
+FadeinLocalPaletteBRG:
+    ld b, VDPPaletteSize
+    ld de, FadeinPalette
+    ld hl, LocalPalette
+-:
+    ld a, (de)
+    ld c, a
+    
+    ; blue
+    ld a, c
+    and $30
+    jr z, +
+    ld a, c
+    sub $10
+    ld c, a
+    ld a, (hl)
+    add a, $10
+    ld (hl), a
+    jp ++
++:    
+    ; red
+    ld a, c
+    and $03
+    jr z, +
+    ld a, c
+    dec a
+    ld c, a
+    inc (hl)
+    jp ++
++:    
+    ; green
+    ld a, c
+    and $0c
+    jr z, +
+    ld a, c
+    sub $04
+    ld c, a
+    ld a, (hl)
+    add a, $04
+    ld (hl), a
++:    
+++:    
+    
+    ld a, c
+    ld (de), a
+
+    inc de
+    inc hl
+    djnz -
+    
+    ret
+
 Fadeout:
     ld a, (CurFrameIdx)
     and $01
@@ -1104,7 +1156,14 @@ Fadein:
     ld a, (CurFrameIdx)
     and $01
     ret nz
-    call FadeinLocalPalette
+    call FadeinLocalPaletteBGR
+    jp UploadPalette
+    
+FadeinSlowerBRG:
+    ld a, (CurFrameIdx)
+    and $07
+    ret nz
+    call FadeinLocalPaletteBRG
     jp UploadPalette
     
 FadeinBeat:
@@ -1121,6 +1180,88 @@ FadeoutSloBeat:
     jp z, NextEffect_JP
     ret
     
+;==============================================================
+; Intro code
+;==============================================================
+    
+IntroInit:
+    ; robots slot
+    ld a, 12
+    ld (MapperSlot1), a
+
+    ; load tiles (Flying robots)
+    SetVDPAddress $2000 | VRAMWrite
+    ld hl,RobFlyTiles
+    ld de,RobFlyTilesSize
+    CopyToVDP
+
+    ; Load palette (Flying robots)
+    memcpy FadeinPalette + TilePaletteSize, RobFlyPalette, TilePaletteSize
+
+    memcpy PM7SAT, RobFlySAT, 256
+    
+    ; bg slot
+    ld a, 11
+    ld (MapperSlot1), a
+
+    ; load tiles (Background)
+    SetVDPAddress $0000 | VRAMWrite
+    ld hl, IntroTiles
+    ld de, IntroTilesSize
+    CopyToVDP
+
+    ; load tilemap (Background)
+    SetVDPAddress $3800 | VRAMWrite
+    ld hl,IntroTileMap
+    ld de,2048
+    CopyToVDP
+    
+    ; Load palette (Background)
+    memcpy FadeinPalette, IntroPalette, TilePaletteSize
+
+    ; scroll y
+    ld hl, $2000
+    ld (RotoY), hl
+    ld a, h
+    out (VDPControl), a
+    ld a, $89
+    out (VDPControl), a
+
+    ret
+    
+Intro:
+    ld a, (CurBeatIdx)
+    cp 3
+    ret c
+
+    call FadeinSlowerBRG
+
+    ld a, (CurBeatIdx)
+    cp 5
+    ret c
+
+    cp 9
+    jp nc, +
+    
+    ; y scroll
+
+    ld bc, $ffd6
+    ld hl, (RotoY)
+    add hl, bc
+    ld (RotoY), hl
+
+    ld a, h
+    out (VDPControl), a
+    ld a, $89
+    out (VDPControl), a
+
++:
+
+    ld a, (CurBeatIdx)
+    cp 16
+    jp nc, FadeoutSloBeat
+    
+    ret
 ;==============================================================
 ; 2D particles code
 ;==============================================================
@@ -2300,6 +2441,12 @@ RotoZoomInit:
     ld a, 3
     ld (MapperSlot1), a
 
+    ; y scroll =  0
+    ld a, $00
+    out (VDPControl), a
+    ld a, $89
+    out (VDPControl), a
+
     ; x scroll = 0
     ld a, $00
     out (VDPControl), a
@@ -3195,28 +3342,28 @@ RotoSequenceOne:
     .db 0       ; rotation inc
     .db 4       ; scale inc
     .db 16      ; x inc
-    .db 32      ; y inc
+    .db 64      ; y inc
     .db 0       ; flags
 
     .db 8       ; beats per step
-    .db 1       ; rotation inc
+    .db 2       ; rotation inc
     .db 6       ; scale inc
     .db 16      ; x inc
-    .db 32      ; y inc
+    .db 127     ; y inc
     .db 4       ; flags
 
     .db 7       ; beats per step
     .db 2       ; rotation inc
     .db -12     ; scale inc
-    .db 48      ; x inc
-    .db 32      ; y inc
+    .db 96      ; x inc
+    .db 127      ; y inc
     .db 0       ; flags
 
     .db 1       ; beats per step
     .db 2       ; rotation inc
     .db -12     ; scale inc
-    .db 48      ; x inc
-    .db 64      ; y inc
+    .db 96      ; x inc
+    .db 127      ; y inc
     .db 2       ; flags
 
     .db 255     ; beats per step
@@ -3335,7 +3482,7 @@ PM7SequenceOne:
     .db 0       ; y inc
     .db 0       ; rax inc
     .db -96     ; ray inc
-    .db 0       ; rbx inc
+    .db 96      ; rbx inc
     .db -96     ; rby inc
     .db 0       ; flags
 
@@ -3375,6 +3522,12 @@ PM7SequenceEnd:
 
 .org $3a00
 EffectsSequence:
+
+.dw Intro
+.dw IntroInit
+.dw SetDummySpriteTable
+.dw 0
+
 .dw RotoZoomMonoFB
 .dw RotoZoomInit
 .dw NullSub
@@ -3568,6 +3721,15 @@ PartPopsy:
 .incbin "test_gfx/part_greets.mono" skip 192 read 64
 PartXMen:
 .incbin "test_gfx/part_greets.mono" skip 256 read 64
+
+.bank 11 slot 1
+.org $2000
+IntroTiles:
+.incbin "test_gfx/test_sms (tiles).bin" fsize IntroTilesSize
+IntroTileMap:
+.incbin "test_gfx/test_sms (tilemap).bin"
+IntroPalette:
+.incbin "test_gfx/test_sms (palette).bin"
 
 .bank 12 slot 1
 .org $0000
