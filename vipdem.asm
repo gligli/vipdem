@@ -446,6 +446,8 @@ main:
 
     call SetDummySpriteTable
     
+    call EnsureFifty    
+    
     call UploadPalette
     
     in a, (VDPControl) ; ack any previous int
@@ -822,8 +824,11 @@ UploadPalette:
     ld c, VDPData
     SetVDPAddress $0000 | CRAMWrite
     ld hl, LocalPalette
-    .repeat VDPPaletteSize
+    .repeat VDPPaletteSize / 2
         outi
+        inc iy
+        outi
+        dec iy
     .endr
     
     ret
@@ -1180,10 +1185,65 @@ FadeoutSloBeat:
     or a
     jp z, NextEffect_JP
     ret
+
+DetectTVType:
+; Returns a=0 for NTSC, a=1 for PAL
+; uses a, hl, de
+    di             ; disable interrupts
+    ld a,%01100000 ; set VDP such that the screen is on
+    out ($bf),a    ; with VBlank interrupts enabled
+    ld a,$81
+    out ($bf),a
+    ld hl,$0000    ; init counter
+-:  in a,($bf)     ; get VDP status
+    or a           ; inspect
+    jp p,-         ; loop until frame interrupt flag is set
+-:  in a,($bf)     ; do the same again, in case we were unlucky and came in just
+    or a           ;   before the start of the VBlank with the flag already set
+    jp p,-
+    ; the VDP must now be at the start of the VBlank
+-:  inc hl         ; (6 cycles) increment counter until interrupt flag comes on again
+    in a,($bf)     ; (11 cycles)
+    or a           ; (4 cycles)
+    jp p,-         ; (10 cycles)
+    xor a          ; reset carry flag, also set a=0
+    ld de,2048     ; see if hl is more or less than 2048
+    sbc hl,de
+    ret c          ; if less, return a=0
+    ld a,1
+    ret            ; if more or equal, return a=1
     
 ;==============================================================
 ; Intro code
 ;==============================================================
+ 
+EnsureFifty:
+    call DetectTVType
+    or a
+    ret nz
+    
+    ld a, 12
+    ld (MapperSlot1), a
+
+    ; load tiles (Background)
+    SetVDPAddress $0000 | VRAMWrite
+    ld hl, FiftyTiles
+    ld de, FiftyTilesSize
+    CopyToVDP
+
+    ; load tilemap (Background)
+    SetVDPAddress $3800 | VRAMWrite
+    ld hl,FiftyTileMap
+    ld de,2048
+    CopyToVDP
+    
+    ; Load palette (Background)
+    memcpy LocalPalette, FiftyPalette, TilePaletteSize
+    
+    call UploadPalette
+
+-:
+    jp -
  
 IntroInit:
     ; robots slot
@@ -3806,6 +3866,14 @@ CheckTileMap:
 .incbin "test_gfx/check (tilemap).bin"
 CheckPalette:
 .incbin "test_gfx/check (palette).bin"
+.dsb TilePaletteSize, BorderColor
+
+FiftyTiles:
+.incbin "test_gfx/50hz (tiles).bin" fsize FiftyTilesSize
+FiftyTileMap:
+.incbin "test_gfx/50hz (tilemap).bin"
+FiftyPalette:
+.incbin "test_gfx/50hz (palette).bin"
 .dsb TilePaletteSize, BorderColor
 
 VBTiles:
