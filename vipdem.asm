@@ -300,6 +300,7 @@ banks 16
     BeatCounter       db
     UseXScroll        db  
     XScroll           db  
+    IntoRobCurFrame   db  
     LocalPalette      dsb 32
     FadeinPalette     dsb 32
 .ende
@@ -1183,7 +1184,7 @@ FadeoutSloBeat:
 ;==============================================================
 ; Intro code
 ;==============================================================
-    
+ 
 IntroInit:
     ; robots slot
     ld a, 12
@@ -1227,6 +1228,18 @@ IntroInit:
     ld a, $89
     out (VDPControl), a
 
+    ld hl, $a000
+    ld (RobAY), hl
+    ld (RobBY), hl
+    ld hl, $0000
+    ld (RobAX), hl
+    ld hl, $e000
+    ld (RobBX), hl
+
+    SetVDPAddress $3f00 | VRAMWrite
+    ld a, $d0
+    out (VDPData), a
+    
     ret
     
 Intro:
@@ -1237,15 +1250,55 @@ Intro:
     call FadeinSlowerBRG
 
     ld a, (CurBeatIdx)
-    cp 5
+    cp 4
     ret c
+    
+    cp 9
+    jp c, +
+    cp 11
+    jp nc, +
 
+    ld hl, IntoRobCurFrame
+    ld a, (hl)
+    inc a
+    ld (hl), a
+    
+    ld c, a
+    GetCosC
+    add a, 28
+    ld (RobAY + 1), a
+    ld (RobBY + 1), a
+    ld a, (hl)
+    add a, 16
+    and $7f
+    ld c, a
+    GetSinC
+    srl a
+    ld (RobAX + 1), a
+    neg
+    sub 32
+    ld (RobBX + 1), a
+    
+    call PM7AnimateRobots
+    call PM7RobotFlames
+
+    ; upload current sat to VDP
+    
+    SetVDPAddress $3f00 | VRAMWrite
+    ld hl, PM7SAT
+    ld c, VDPData
+    .repeat 256
+        outi
+    .endr
++:
+    
+    ld a, (CurBeatIdx)
     cp 9
     jp nc, +
     
     ; y scroll
 
-    ld bc, $ffd6
+    ld bc, $ffdf
     ld hl, (RotoY)
     add hl, bc
     ld (RotoY), hl
@@ -1256,6 +1309,7 @@ Intro:
     out (VDPControl), a
 
 +:
+
 
     ld a, (CurBeatIdx)
     cp 16
@@ -2832,7 +2886,70 @@ RotoRAMCodeRet:
     sub offset
 .endm
 
+PM7AnimateRobots:
+    ld a, (RobAY + 1)
+    PM7SATYSet $00, 4
+    add a, $10
+    PM7SATYSet $08, 4
+    add a, $10
+    PM7SATYSet $10, 4
+    add a, $10
+    PM7SATYSet $18, 4
+    
+    ld a, (RobBY + 1)
+    PM7SATYSet $04, 4
+    add a, $10
+    PM7SATYSet $0c, 4
+    add a, $10
+    PM7SATYSet $14, 4
+    add a, $10
+    PM7SATYSet $1c, 4
+    
+    ld a, (RobAX + 1)
+    ld de, $10
+    ld hl, PM7SAT + $80
+    PM7SATXSet -4
+    ld hl, PM7SAT + $82
+    add a, 8
+    PM7SATXSet -4
+    ld hl, PM7SAT + $84
+    add a, 8
+    PM7SATXSet 3
+    ld hl, PM7SAT + $86
+    add a, 8
+    PM7SATXSet 3
+
+    ld a, (RobBX + 1)
+    ld de, $10
+    ld hl, PM7SAT + $88
+    PM7SATXSet -4
+    ld hl, PM7SAT + $8a
+    add a, 8
+    PM7SATXSet -4
+    ld hl, PM7SAT + $8c
+    add a, 8
+    PM7SATXSet 3
+    ld hl, PM7SAT + $8e
+    add a, 8
+    PM7SATXSet 3
+
+    ret
+    
+PM7RobotFlames:
+    ; rotating flames colors (while no fadein/out)
+    ld a, (CurFrameIdx)
+    and $03
+    ld hl, RobFlyFlamesPal
+    AddAToHL
+    ld de, LocalPalette + VDPPaletteSize - 4
+    ld bc, 3
+    ldir
+    jp UploadPalette
+        
+ 
 PseudoMode7Init:
+    call ClearTileMap
+    
     ld a, 1
     ld (MapperSlot1), a
 
@@ -2924,6 +3041,8 @@ PseudoMode7Init:
     ld hl, $b000
     ld (RobBX), hl
 
+    call PM7AnimateRobots
+    
     ; sequencer init
     ld hl, PM7Sequence
     ld (RotoCurStep), hl
@@ -3056,15 +3175,7 @@ PseudoMode7MonoFB:
 +:    
     push af
     
-    ; rotating flames colors (while no fadein/out)
-    ld a, (CurFrameIdx)
-    and $03
-    ld hl, RobFlyFlamesPal
-    AddAToHL
-    ld de, LocalPalette + VDPPaletteSize - 4
-    ld bc, 3
-    ldir
-    call UploadPalette
+    call PM7RobotFlames
     
     pop af
     
@@ -3124,52 +3235,8 @@ PseudoMode7MonoFB:
 
     ; Robots animation
     
-    ld a, (RobAY + 1)
-    PM7SATYSet $00, 4
-    add a, $10
-    PM7SATYSet $08, 4
-    add a, $10
-    PM7SATYSet $10, 4
-    add a, $10
-    PM7SATYSet $18, 4
+    call PM7AnimateRobots
     
-    ld a, (RobBY + 1)
-    PM7SATYSet $04, 4
-    add a, $10
-    PM7SATYSet $0c, 4
-    add a, $10
-    PM7SATYSet $14, 4
-    add a, $10
-    PM7SATYSet $1c, 4
-    
-    ld a, (RobAX + 1)
-    ld de, $10
-    ld hl, PM7SAT + $80
-    PM7SATXSet -4
-    ld hl, PM7SAT + $82
-    add a, 8
-    PM7SATXSet -4
-    ld hl, PM7SAT + $84
-    add a, 8
-    PM7SATXSet 3
-    ld hl, PM7SAT + $86
-    add a, 8
-    PM7SATXSet 3
-
-    ld a, (RobBX + 1)
-    ld de, $10
-    ld hl, PM7SAT + $88
-    PM7SATXSet -4
-    ld hl, PM7SAT + $8a
-    add a, 8
-    PM7SATXSet -4
-    ld hl, PM7SAT + $8c
-    add a, 8
-    PM7SATXSet 3
-    ld hl, PM7SAT + $8e
-    add a, 8
-    PM7SATXSet 3
-
     ; X scroll
     ld a, (RotoRot)
     sub 76
