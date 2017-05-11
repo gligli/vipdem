@@ -1098,6 +1098,13 @@ Fadeout:
     call FadeoutLocalPalette
     jp UploadPalette
     
+FadeoutSlo:
+    ld a, (CurFrameIdx)
+    and $03
+    ret nz
+    call FadeoutLocalPalette
+    jp UploadPalette
+    
 Fadein:
     ld a, (CurFrameIdx)
     and $01
@@ -1112,8 +1119,8 @@ FadeinBeat:
     jp z, NextEffect_JP
     ret
     
-FadeoutBeat:
-    call Fadeout
+FadeoutSloBeat:
+    call FadeoutSlo
     ld a, (BeatCounter)
     or a
     jp z, NextEffect_JP
@@ -3382,11 +3389,6 @@ EffectsSequence:
 .dw 0
 
 .dw Particles
-.dw ParticlesInitGreets
-.dw NullSub
-.dw 0
-
-.dw Particles
 .dw ParticlesInitTitan
 .dw NullSub
 .dw 0
@@ -3403,6 +3405,16 @@ EffectsSequence:
 
 .dw Particles
 .dw ParticlesInitXMen
+.dw NullSub
+.dw 0
+
+.dw Particles
+.dw ParticlesInitGreets
+.dw NullSub
+.dw 0
+
+.dw FadeoutSloBeat
+.dw NullSub
 .dw NullSub
 .dw 0
 
