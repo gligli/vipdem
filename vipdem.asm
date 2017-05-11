@@ -1353,6 +1353,12 @@ ParticlesLoadVRAM:
     ; Load palette (VectorBalls)
     memcpy LocalPalette + TilePaletteSize, VBPalette, TilePaletteSize
 
+    ; show left 8 px
+    ld a, $14
+    out (VDPControl), a
+    ld a, $80
+    out (VDPControl), a
+    
     ld a, %1100000
 ;          ||||||`- Zoomed sprites -> 16x16 pixels
 ;          |||||`-- Doubled sprites -> 2 tiles per sprite, 8x16
@@ -2729,6 +2735,12 @@ PseudoMode7Init:
 
     ld a, 1
     ld (UseXScroll), a
+
+    ; hide left 8 px
+    ld a, $34
+    out (VDPControl), a
+    ld a, $80
+    out (VDPControl), a
     
     ld a, %1100010
 ;          ||||||`- Zoomed sprites -> 16x16 pixels
