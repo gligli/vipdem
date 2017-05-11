@@ -893,7 +893,41 @@ random:
     ld (RandSeed), a
     pop bc
     ret    
-        
+
+DetectTVType:
+; Returns a=0 for NTSC, a=1 for PAL
+; uses a, hl, de
+    di             ; disable interrupts
+    ld a,%01100000 ; set VDP such that the screen is on
+    out ($bf),a    ; with VBlank interrupts enabled
+    ld a,$81
+    out ($bf),a
+    ld hl,$0000    ; init counter
+-:  in a,($bf)     ; get VDP status
+    or a           ; inspect
+    jp p,-         ; loop until frame interrupt flag is set
+-:  in a,($bf)     ; do the same again, in case we were unlucky and came in just
+    or a           ;   before the start of the VBlank with the flag already set
+    jp p,-
+    ; the VDP must now be at the start of the VBlank
+-:  inc hl         ; (6 cycles) increment counter until interrupt flag comes on again
+    in a,($bf)     ; (11 cycles)
+    or a           ; (4 cycles)
+    jp p,-         ; (10 cycles)
+    xor a          ; reset carry flag, also set a=0
+    ld de,2048     ; see if hl is more or less than 2048
+    sbc hl,de
+    ret c          ; if less, return a=0
+    ld a,1
+    ret            ; if more or equal, return a=1
+    
+SATOuti:
+    .repeat 256
+        outi
+    .endr
+    
+    ret
+    
 ;==============================================================
 ; Music code
 ;==============================================================
@@ -1186,33 +1220,6 @@ FadeoutSloBeat:
     jp z, NextEffect_JP
     ret
 
-DetectTVType:
-; Returns a=0 for NTSC, a=1 for PAL
-; uses a, hl, de
-    di             ; disable interrupts
-    ld a,%01100000 ; set VDP such that the screen is on
-    out ($bf),a    ; with VBlank interrupts enabled
-    ld a,$81
-    out ($bf),a
-    ld hl,$0000    ; init counter
--:  in a,($bf)     ; get VDP status
-    or a           ; inspect
-    jp p,-         ; loop until frame interrupt flag is set
--:  in a,($bf)     ; do the same again, in case we were unlucky and came in just
-    or a           ;   before the start of the VBlank with the flag already set
-    jp p,-
-    ; the VDP must now be at the start of the VBlank
--:  inc hl         ; (6 cycles) increment counter until interrupt flag comes on again
-    in a,($bf)     ; (11 cycles)
-    or a           ; (4 cycles)
-    jp p,-         ; (10 cycles)
-    xor a          ; reset carry flag, also set a=0
-    ld de,2048     ; see if hl is more or less than 2048
-    sbc hl,de
-    ret c          ; if less, return a=0
-    ld a,1
-    ret            ; if more or equal, return a=1
-    
 ;==============================================================
 ; Intro code
 ;==============================================================
@@ -1347,9 +1354,7 @@ Intro:
     SetVDPAddress $3f00 | VRAMWrite
     ld hl, PM7SAT
     ld c, VDPData
-    .repeat 256
-        outi
-    .endr
+    call SATOuti
 +:
     
     ld a, (CurBeatIdx)
@@ -1640,9 +1645,7 @@ Particles:
     SetVDPAddress $3f00 | VRAMWrite
     ld hl, PartSAT
     ld c, VDPData
-    .repeat 256
-        outi
-    .endr
+    call SATOuti
     
     call UploadPalette
 
@@ -2036,9 +2039,7 @@ VectorBalls:
     SetVDPAddress $3f00 | VRAMWrite
     ld hl, VBSAT
     ld c, VDPData
-    .repeat 256
-        outi
-    .endr
+    call SATOuti
 
     ; advance sequencer
 
@@ -3188,9 +3189,7 @@ PseudoMode7MonoFB:
     SetVDPAddress $3f00 | VRAMWrite
     ld hl, PM7SAT
     ld c, VDPData
-    .repeat 256
-        outi
-    .endr
+    call SATOuti
 
     ; advance sequencer
 
