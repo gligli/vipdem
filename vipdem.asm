@@ -108,17 +108,19 @@ banks 16
     xor a 
     ld (HadVBlank), a
 ---:
-    ld a, (HadVBlank)
     .ifeq playSmp 1
         PlaySampleL
-        .repeat 36
+        .repeat 18
             inc iy
+            dec iy
         .endr
         PlaySampleU
-        .repeat 33
+        .repeat 16
             inc iy
+            dec iy
         .endr
     .endif
+    ld a, (HadVBlank)
     or a  ; update flags
     jp p, ---
 .endm
@@ -143,19 +145,22 @@ banks 16
     jp nz,-
 .endm
 
-.macro CopyToVDPPCM
+.macro CopyToVDPPCM args slot_
 ; copies data to the VDP
 ; parameters: hl = data address, de = data length
 ; affects: a, hl, bc, de
-    ld b, 13
+    ld b, 8
     ld c, VDPData
 -:  outi
 
-    dec b
     jp nz, +
-    ld b, 13
+    ld a, 6
+    ld (MapperSlot1), a
     PlaySampleL
-    PlaySampleU    
+    PlaySampleU  
+    ld a, slot_
+    ld (MapperSlot1), a    
+    ld b, 8
 +:
 
     dec de
@@ -1740,13 +1745,13 @@ ParticlesLoadVRAM:
     SetVDPAddress $0000 | VRAMWrite
     ld hl,StarsTiles
     ld de,StarsTilesSize
-    CopyToVDPPCM
+    CopyToVDPPCM 13
     
     ; load tilemap (Stars)
     SetVDPAddress $3800 | VRAMWrite
     ld hl,StarsTileMap
     ld de,TileMapSize
-    CopyToVDPPCM
+    CopyToVDPPCM 13
     
     ; Load palette (Stars)
     memcpy FadeinPalette, StarsPalette, TilePaletteSize
@@ -1758,7 +1763,7 @@ ParticlesLoadVRAM:
     SetVDPAddress $2000 | VRAMWrite
     ld hl,PartData
     ld de,PartSize
-    CopyToVDPPCM
+    CopyToVDPPCM 1
 
     ; Load palette (VectorBalls)
     memcpy LocalPalette + TilePaletteSize, VBPalette, TilePaletteSize
@@ -3909,7 +3914,7 @@ EffectsSequence:
 
 .dw PseudoMode7MonoFB
 .dw PseudoMode7Init
-.dw NullSub
+.dw SetDummySpriteTable
 .dw 0
 
 .dw Particles
