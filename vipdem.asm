@@ -1316,6 +1316,12 @@ IntroInit:
     ld a, $d0
     out (VDPData), a
     
+    ; hide left 8 px
+    ld a, $34
+    out (VDPControl), a
+    ld a, $80
+    out (VDPControl), a
+
     ret
     
 Intro:
@@ -1332,6 +1338,8 @@ Intro:
     jp c, @Scroll
     cp 11
     jp c, @Robs
+    cp 13
+    ret c
 
     ld a, 1
     ld (UseXScroll), a
@@ -1350,6 +1358,8 @@ Intro:
     ld (hl), a
     
     ld e, a
+    srl e
+    add a, a
     add a, a
     ld ixl, a
     add a, a
@@ -1360,25 +1370,23 @@ Intro:
     add a, ixl
     ld c, a
     GetSinC
-    add a, 128
     
-    ld h, a
-    call MultiplyUnsignedHByE
-    ld a, h
-    
-    ld (XScroll + line * 2), a
+    ld b, e
+    ld c, a
+    call FPMultiplySignedBByC
+    ld d, h
     
     ld a, line * 2 + 1
     add a, ixh
     ld c, a
     GetCosC
-    add a, 128
 
-    ld h, a
-    call MultiplyUnsignedHByE
-    ld a, h
-
-    ld (XScroll + line * 2 + 1), a
+    ld b, e
+    ld c, a
+    call FPMultiplySignedBByC
+    ld l, d
+    
+    ld (XScroll + line * 2), hl
 .endr
 
     ld a, (CurBeatIdx)
@@ -2600,6 +2608,12 @@ RotoZoomInit:
     ld a, $00
     out (VDPControl), a
     ld a, $88
+    out (VDPControl), a
+
+    ; show left 8 px
+    ld a, $14
+    out (VDPControl), a
+    ld a, $80
     out (VDPControl), a
 
     memset XScroll, 0, Height
