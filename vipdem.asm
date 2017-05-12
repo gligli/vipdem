@@ -75,16 +75,49 @@ banks 16
 ; Utility macros
 ;==============================================================
 
+.macro PlaySampleU ; c65 (279)
+    ex af, af'
+    exx
+    
+    rld
+    and $0f
+    or $90
+    out (PSGPort), a
+    inc hl
+    
+    exx    
+    ex af, af'
+.endm
+
+.macro PlaySampleL ; c58 (286)
+    ex af, af'
+    exx
+    
+    ld a, (hl)
+    and $0f
+    or $90
+    out (PSGPort), a
+    bit 7, h
+    call nz, ParticlesChangePCMBank
+
+    exx    
+    ex af, af'
+.endm
+
 .macro WaitVBlank args playSmp ; c11
     xor a 
     ld (HadVBlank), a
 ---:
     ld a, (HadVBlank)
     .ifeq playSmp 1
-        .repeat 10
+        PlaySampleL
+        .repeat 28
             inc iy
         .endr
-        PlaySampleSkew 125
+        PlaySampleU
+        .repeat 25
+            inc iy
+        .endr
     .endif
     or a  ; update flags
     jp p, ---
@@ -108,12 +141,6 @@ banks 16
     ld a,d
     or e
     jp nz,-
-.endm
-
-.macro PlaySample
-    exx
-    outd
-    exx
 .endm
 
 .macro PlaySampleSkew args skew
@@ -488,69 +515,12 @@ Reinit:
 ;==============================================================
 
 MainLoop:
-    WaitVBlank 0
 p0:
 
     ; frame index advance
     ld a, (CurFrameIdx)
     inc a
     ld (CurFrameIdx), a
-
-    ; Effect switcher
-    
-    in a, (IOPortA)
-    ld c, a
-    bit 5, c
-    jp nz, +
-        memset LocalPalette, 0, VDPPaletteSize
-        call UploadPalette
-        jp NextEffect_JP
-+:        
-
-    ; Roto / PM7 controls
-/* 
-    ld ixl, c
-    bit 4, c
-    jp nz, +
-    RotoZoomFromRotScale 0, 1
-    ld hl, (RotoX)
-    or a
-    sbc hl, de
-    sbc hl, de
-    ld (RotoX), hl
-    ld hl, (RotoY)
-    add hl, bc
-    add hl, bc
-    ld (RotoY), hl
-+:    
-    ld a, ixl
-
-    ld bc, $0020
-    ld hl, (RotoScl)
-    rrca
-    jp c, +
-        or a
-        sbc hl, bc
-+:
-    rrca
-    jp c, +
-        add hl, bc
-+:
-    ld (RotoScl), hl
-    ld bc, $0002
-    ld hl, (RotoRot)
-    rrca
-    jp c, +
-        or a
-        sbc hl, bc
-+:
-    rrca
-    jp c, +
-        add hl, bc
-+:
-    ld (RotoRot), hl
-
-    jp p1 */
    
 p1:
     call CurEffectUpdate
@@ -1215,14 +1185,16 @@ FadeinSlowerBRG:
     call FadeinLocalPaletteBRG
     jp UploadPalette
     
-FadeinBeat:
-    call Fadein
-    ld a, (BeatCounter)
-    or a
-    jp z, NextEffect_JP
-    ret
+; FadeinBeat:
+    ; call Fadein
+    ; ld a, (BeatCounter)
+    ; or a
+    ; jp z, NextEffect_JP
+    ; ret
     
 FadeoutSloBeat:
+    WaitVBlank 0
+    
     call FadeoutSlo
     ld a, (BeatCounter)
     or a
@@ -1325,6 +1297,8 @@ IntroInit:
     ret
     
 Intro:
+    WaitVBlank 0
+    
     ld a, (CurBeatIdx)
     cp 16
     call nc, UploadPalette
@@ -1545,6 +1519,21 @@ ParticlesInitGreets:
     jp ParticlesInit
 
 ParticlesInitTitan:
+    call ParticlesLoadVRAM
+    
+    ; pcm playback
+    exx
+    ld c, 6
+    ld a, c
+    ld (MapperSlot1), a
+    ld hl, $4000
+    exx
+    
+    ld a, $81
+    out (PSGPort), a
+    xor a
+    out (PSGPort), a
+
     ld a, 69
     ld (RandSeed), a
     ld a, 1
@@ -1595,6 +1584,11 @@ ParticlesInit:
     
     ld a, l
     ld (PartCount), a
+    
+    exx
+    ld a, c
+    ld (MapperSlot1), a    
+    exx
     
     memset PartXL, $00, 64
     memset PartYL, $00, 64
@@ -1707,8 +1701,42 @@ ParticlesLoadVRAM:
     out (VDPControl), a
     
     ret
+
+ParticlesChangePCMBank:
+    inc c
+    ld a, c
+    ld (MapperSlot1), a
+    srl h
+    
+    ret
+    
+ParticlesSilencePCM:
+    call FadeoutSloBeat
+    
+    ; silence pcm by playing end silence repeately
+    exx
+    ld c, 11
+    ld a, c
+    ld (MapperSlot1), a
+    ld hl, $6000
+    exx
+    
+    ret
     
 Particles:
+    WaitVBlank 1
+
+    PlaySampleL
+    .repeat 28
+        inc iy
+    .endr
+    PlaySampleU
+    .repeat 27
+        inc iy
+    .endr
+    
+    ;jp -
+    
     ; upload current sat to VDP
     
     SetVDPAddress $3f00 | VRAMWrite
@@ -1716,7 +1744,7 @@ Particles:
     ld c, VDPData
     call SATOuti
     
-    call UploadPalette
+    call Fadein
 
     ld ixh, 0
 PartLoop:    
@@ -2103,6 +2131,8 @@ VectorBallsInit:
     ret
 
 VectorBalls:
+    WaitVBlank 0
+    
     ; upload current sat to VDP
     
     SetVDPAddress $3f00 | VRAMWrite
@@ -2748,6 +2778,8 @@ RotoLoadOtherColTilemap:
     ret
     
 RotoZoomMonoFB:
+    WaitVBlank 0
+    
     ; VDP tilemap pointer (double buffering)
     ld a, (CurFrameIdx)
     and 1
@@ -3272,7 +3304,8 @@ PM7ComputePerLineIncsSimple:
     ret
 
 PseudoMode7MonoFB:
-    ; upload current sat to VDP
+    WaitVBlank 0
+; upload current sat to VDP
     
     SetVDPAddress $3f00 | VRAMWrite
     ld hl, PM7SAT
@@ -3753,30 +3786,25 @@ PM7SequenceEnd:
 .org $3a00
 EffectsSequence:
 
-.dw Intro
-.dw IntroInit
-.dw SetDummySpriteTable
-.dw 0
+; .dw Intro
+; .dw IntroInit
+; .dw SetDummySpriteTable
+; .dw 0
 
-.dw RotoZoomMonoFB
-.dw RotoZoomInit
-.dw NullSub
-.dw 0
+; .dw RotoZoomMonoFB
+; .dw RotoZoomInit
+; .dw NullSub
+; .dw 0
 
-.dw VectorBalls
-.dw VectorBallsInit
-.dw SetDummySpriteTable
-.dw 0
+; .dw VectorBalls
+; .dw VectorBallsInit
+; .dw SetDummySpriteTable
+; .dw 0
 
-.dw PseudoMode7MonoFB
-.dw PseudoMode7Init
-.dw SetDummySpriteTable
-.dw 0
-
-.dw FadeinBeat
-.dw ParticlesLoadVRAM
-.dw NullSub
-.dw 0
+; .dw PseudoMode7MonoFB
+; .dw PseudoMode7Init
+; .dw NullSub ;.dw ParticlesLoadVRAM
+; .dw 0
 
 .dw Particles
 .dw ParticlesInitTitan
@@ -3953,7 +3981,7 @@ PartXMen:
 .incbin "test_gfx/part_greets.mono" skip 256 read 64
 
 .bank 11 slot 1
-.org $2000
+.org $2900
 IntroTiles:
 .incbin "test_gfx/test_sms (tiles).bin" fsize IntroTilesSize
 IntroTileMap:
@@ -4038,7 +4066,8 @@ rst 0
 
 .bank 4 slot 1
 .org $0000
-.incbin "psg/2un_57.vgm" skip $40 read $4000
+.incbin "psg/2un_57.vgm" skip $6ac0
+;.incbin "psg/2un_57.vgm" skip $40 read $4000
 .bank 5 slot 1
 .org $0000
 .incbin "psg/2un_57.vgm" skip $4040
