@@ -811,7 +811,29 @@ UploadPalette:
     .endr
     
     ret
-        
+
+UploadPalettePCM:
+    ld c, VDPData
+    SetVDPAddress $0000 | CRAMWrite
+    ld hl, LocalPalette
+    .repeat VDPPaletteSize / 4
+        outi
+        inc iy
+        outi
+        dec iy
+    .endr
+    PlaySampleL
+    .repeat VDPPaletteSize / 4
+        outi
+        inc iy
+        outi
+        dec iy
+    .endr
+    PlaySampleU
+    
+    ret
+
+    
 SetDummySpriteTable:
     ; dummy Sprite table
     SetVDPAddress $3f00 | VRAMWrite
@@ -906,6 +928,29 @@ SATOuti:
     .endr
     
     ret
+
+SATOutiPCM: ; c106
+    .repeat 5
+        outi
+    .endr
+
+    .repeat 7
+        .repeat 18
+            outi
+        .endr
+        PlaySampleL
+        .repeat 17
+            outi
+        .endr
+        PlaySampleU
+    .endr
+   
+    .repeat 6
+        outi
+    .endr
+    
+    ret
+
     
 ;==============================================================
 ; Music code
@@ -1178,6 +1223,13 @@ Fadein:
     call FadeinLocalPaletteBGR
     jp UploadPalette
     
+FadeinPCM:
+    ld a, (CurFrameIdx)
+    and $01
+    ret nz
+    call FadeinLocalPaletteBGR
+    jp UploadPalettePCM    
+    
 FadeinSlowerBRG:
     ld a, (CurFrameIdx)
     and $07
@@ -1331,38 +1383,52 @@ Intro:
     inc a
     ld (hl), a
     
-    ld e, a
-    srl e
+    ld d, a
+    srl d
+    ld iyh, d
     add a, a
     add a, a
     ld ixl, a
     add a, a
     ld ixh, a
     
-.repeat Height / 2 index line
-    ld a, line * 2
+    ld de, XScroll
+    
+-:
+    ld a, e
+    
     add a, ixl
     ld c, a
     GetSinC
     
-    ld b, e
+    ld b, iyh
     ld c, a
     call FPMultiplySignedBByC
-    ld d, h
+    ld a, h
     
-    ld a, line * 2 + 1
+    ld (de), a
+    inc e
+    
+    ld a, e
+    
     add a, ixh
     ld c, a
     GetCosC
 
-    ld b, e
+    ld b, iyh
     ld c, a
     call FPMultiplySignedBByC
-    ld l, d
+    ld a, h
     
-    ld (XScroll + line * 2), hl
-.endr
+    ld (de), a
+    inc e
+    
+    ld a, e
+    cp Height
+    jp nz, -
 
+    
+    
     ld a, (CurBeatIdx)
     cp 16
     jp z, FadeoutLocalPalette    
@@ -1726,25 +1792,18 @@ ParticlesSilencePCM:
 Particles:
     WaitVBlank 1
 
-    PlaySampleL
-    .repeat 28
-        inc iy
-    .endr
-    PlaySampleU
-    .repeat 27
-        inc iy
-    .endr
-    
-    ;jp -
-    
     ; upload current sat to VDP
     
     SetVDPAddress $3f00 | VRAMWrite
     ld hl, PartSAT
     ld c, VDPData
-    call SATOuti
+
+; c64
+
+    call SATOutiPCM
+; c170    
     
-    call Fadein
+    call FadeinPCM
 
     ld ixh, 0
 PartLoop:    
