@@ -1320,20 +1320,93 @@ IntroInit:
     
 Intro:
     ld a, (CurBeatIdx)
+    cp 16
+    call nc, UploadPalette
+    
+    ld a, (CurBeatIdx)
     cp 3
     ret c
+    cp 5
+    jp c, FadeinSlowerBRG
+    cp 9
+    jp c, @Scroll
+    cp 11
+    jp c, @Robs
 
-    call FadeinSlowerBRG
+    ld a, 1
+    ld (UseXScroll), a
+
+    ; line int every line
+    ld a, 0
+    out (VDPControl), a
+    ld a, $8a
+    out (VDPControl), a
+    
+    ; sinus "dissolve"
+    
+    ld hl, IntroDissCurFrame
+    ld a, (hl)
+    inc a
+    ld (hl), a
+    
+    ld e, a
+    add a, a
+    ld ixl, a
+    add a, a
+    ld ixh, a
+    
+.repeat Height / 2 index line
+    ld a, line * 2
+    add a, ixl
+    ld c, a
+    GetSinC
+    add a, 128
+    
+    ld h, a
+    call MultiplyUnsignedHByE
+    ld a, h
+    
+    ld (XScroll + line * 2), a
+    
+    ld a, line * 2 + 1
+    add a, ixh
+    ld c, a
+    GetCosC
+    add a, 128
+
+    ld h, a
+    call MultiplyUnsignedHByE
+    ld a, h
+
+    ld (XScroll + line * 2 + 1), a
+.endr
 
     ld a, (CurBeatIdx)
-    cp 4
-    ret c
-    
-    cp 9
-    jp c, +
-    cp 11
-    jp nc, +
+    cp 16
+    jp z, FadeoutLocalPalette    
 
+    ld a, (CurBeatIdx)
+    cp 17
+    jp z, NextEffect_JP
+
+    ret
+    
+@Scroll:
+    ; y scroll
+
+    ld bc, $ffd9
+    ld hl, (RotoY)
+    add hl, bc
+    ld (RotoY), hl
+
+    ld a, h
+    out (VDPControl), a
+    ld a, $89
+    out (VDPControl), a
+
+    ret
+    
+@Robs:
     ; robots movement
     
     ld hl, IntroRobCurFrame
@@ -1366,83 +1439,9 @@ Intro:
     ld hl, PM7SAT
     ld c, VDPData
     call SATOuti
-+:
-    
-    ld a, (CurBeatIdx)
-    cp 9
-    jp nc, +
-    
-    ; y scroll
-
-    ld bc, $ffdf
-    ld hl, (RotoY)
-    add hl, bc
-    ld (RotoY), hl
-
-    ld a, h
-    out (VDPControl), a
-    ld a, $89
-    out (VDPControl), a
-
-+:
-    ld a, (CurBeatIdx)
-    cp 11
-    jp c, ++
-
-    ld a, 1
-    ld (UseXScroll), a
-
-    ; line int every line
-    ld a, 0
-    out (VDPControl), a
-    ld a, $8a
-    out (VDPControl), a
-    
-    ; sinus "dissolve"
-    
-    ld hl, IntroDissCurFrame
-    ld a, (hl)
-    inc a
-    ld (hl), a
-    
-    ld e, a
-    add a, a
-    ld ixl, a
-    add a, a
-    ld ixh, a
-    
-.repeat Height / 5 index line
-    ld a, line * 2
-    add a, ixl
-    ld c, a
-    GetSinC
-    add a, 128
-    
-    ld h, a
-    call MultiplyUnsignedHByE
-    ld a, h
-    
-    ld (XScroll + line * 2), a
-    
-    ld a, line * 2 + 1
-    add a, ixh
-    ld c, a
-    GetCosC
-    add a, 128
-
-    ld h, a
-    call MultiplyUnsignedHByE
-    ld a, h
-
-    ld (XScroll + line * 2 + 1), a
-.endr
-    
-++:
-    ld a, (CurBeatIdx)
-    cp 16
-    jp nc, FadeoutSloBeat
     
     ret
+    
 ;==============================================================
 ; 2D particles code
 ;==============================================================
@@ -3356,16 +3355,32 @@ PseudoMode7MonoFB:
     ld (RotoY), hl
     
     ; upload current tilemap to VDP
+    ld b, PM7LineCount
     ld c, VDPData
-    .repeat PM7LineCount index line
-        SetVDPAddress ($3dc0 - line * 64) | VRAMWrite
-        ld hl, PM7TMEnd - line * 64 - 1
-        .repeat 32
-            outd
-            dec hl
-            in (c)
-        .endr
+    ld de, $3dc0 | VRAMWrite
+    ld hl, PM7TMEnd - 1
+-:    
+    ld a, e
+    out (VDPControl), a
+    ld a, d
+    out (VDPControl), a
+
+    push bc
+    
+    .repeat 32
+        outd
+        ind
     .endr
+    
+    ld bc, -64
+    ex de, hl
+    add hl, bc
+    ex de, hl
+
+    pop bc
+
+    dec b
+    jp nz, -
 
     ; Robots animation
     
