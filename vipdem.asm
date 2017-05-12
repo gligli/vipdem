@@ -75,7 +75,7 @@ banks 16
 ; Utility macros
 ;==============================================================
 
-.macro PlaySampleU ; c65 (279)
+.macro PlaySampleU ; c65 (436)
     ex af, af'
     exx
     
@@ -89,7 +89,7 @@ banks 16
     ex af, af'
 .endm
 
-.macro PlaySampleL ; c58 (286)
+.macro PlaySampleL ; c58 (443)
     ex af, af'
     exx
     
@@ -111,11 +111,11 @@ banks 16
     ld a, (HadVBlank)
     .ifeq playSmp 1
         PlaySampleL
-        .repeat 28
+        .repeat 36
             inc iy
         .endr
         PlaySampleU
-        .repeat 25
+        .repeat 33
             inc iy
         .endr
     .endif
@@ -231,14 +231,14 @@ banks 16
     ld iyh,a
 .endm
 
-.macro SignExtendAToHL
+.macro SignExtendAToHL ; c20
 	ld l,a
 	rlca		; or rla
 	sbc a,a
 	ld h,a
 .endm
 
-.macro SignExtendAToBC
+.macro SignExtendAToBC ; c20
 	ld c,a
 	rlca		; or rla
 	sbc a,a
@@ -878,7 +878,7 @@ ClearTileMap:
 ;
 ; S = R - 1
 ; an 8-bit unsigned integer
-random:
+.macro random ; c81
     push bc
     ld a, (RandSeed)
     ld b, a 
@@ -893,7 +893,7 @@ random:
 
     ld (RandSeed), a
     pop bc
-    ret    
+.endm 
 
 DetectTVType:
 ; Returns a=0 for NTSC, a=1 for PAL
@@ -930,22 +930,22 @@ SATOuti:
     ret
 
 SATOutiPCM: ; c106
-    .repeat 5
+    .repeat 16
         outi
     .endr
 
-    .repeat 7
-        .repeat 18
+    .repeat 5
+        .repeat 23
             outi
         .endr
         PlaySampleL
-        .repeat 17
+        .repeat 22
             outi
         .endr
         PlaySampleU
     .endr
    
-    .repeat 6
+    .repeat 15
         outi
     .endr
     
@@ -1527,7 +1527,7 @@ PartDoOneInitByte:
 PartRandomizePos:
     ld b, 64
 -:
-    call random
+    random
     srl a
     ld (hl), a
     inc l
@@ -1538,7 +1538,7 @@ PartRandomizePos:
 PartRandomizeLow:
     ld b, 64
 -:
-    call random
+    random
     sra a
     sra a
     ld (hl), a
@@ -1550,7 +1550,7 @@ PartRandomizeLow:
 PartRandomizeLifeA:
     ld b, 64
 -:
-    call random
+    random
     .repeat 5
         srl a
     .endr
@@ -1565,7 +1565,7 @@ PartRandomizeThres:
 .define @Thres $10
     ld b, 64
 -:
-    call random
+    random
     cp @Thres
     jr nc, +
     ld a, @Thres
@@ -1776,7 +1776,7 @@ ParticlesChangePCMBank:
     
     ret
     
-ParticlesSilencePCM:
+ParticlesSilence:
     call FadeoutSloBeat
     
     ; silence pcm by playing end silence repeately
@@ -1791,16 +1791,14 @@ ParticlesSilencePCM:
     
 Particles:
     WaitVBlank 1
-
+    
     ; upload current sat to VDP
     
     SetVDPAddress $3f00 | VRAMWrite
     ld hl, PartSAT
     ld c, VDPData
-
-; c64
-
     call SATOutiPCM
+
 ; c170    
     
     call FadeinPCM
@@ -1833,22 +1831,29 @@ PartLoop:
     ld hl, PartInitialBeat
     sub (hl)
     cp PartInitialBeatWait
+    
     jp c, @NoTrans
     cp PartEndBeat
     jp z, NextEffect_JP
     
+; c166
+
     ; apply tranformations
     
     ld a, (PartMode)
     or a
     jp nz, +
-    call random
+    random
     .repeat 4
         sra a
     .endr
     add a, iyl
     ld iyl, a
 +:    
+
+; c304  
+    PlaySampleL
+; c-20
 
     ; x
     ld a, iyl
@@ -1881,6 +1886,8 @@ PartLoop:
     ld iy, 0 ; zero acceleration
 +:    
     
+; c72
+
     ; life
     ld a, ixl
     ex de, hl
@@ -1894,6 +1901,8 @@ PartLoop:
     ld de, Height * 256 ; out of screen y
     ld iy, 0 ; zero acceleration
 +:
+
+; c138
 
     ; save xyl
     
@@ -1917,7 +1926,10 @@ PartLoop:
     ld a, ixl
     ld (hl), a ; life
     
-@NoTrans:
+; c729
+    PlaySampleU
+    
+@NoTransEnd:
     
     ; sat update
     
@@ -1944,13 +1956,27 @@ PartLoop:
     .endr
     and $0f
     ld (hl), a
-
+     
     inc ixh
     ld a, (PartCount)
     cp ixh
-    jp nz, PartLoop    
-        
+    jp nz, PartLoop
+; c1002
+     
     ret
+   
+@NoTrans:
+    .repeat 7
+        inc iy
+        dec iy
+    .endr
+    PlaySampleL
+    .repeat 13
+        inc iy
+        dec iy
+    .endr
+    PlaySampleU
+    jp @NoTransEnd
   
 ;==============================================================
 ; VectorBalls code
@@ -3845,25 +3871,25 @@ PM7SequenceEnd:
 .org $3a00
 EffectsSequence:
 
-; .dw Intro
-; .dw IntroInit
-; .dw SetDummySpriteTable
-; .dw 0
+.dw Intro
+.dw IntroInit
+.dw SetDummySpriteTable
+.dw 0
 
-; .dw RotoZoomMonoFB
-; .dw RotoZoomInit
-; .dw NullSub
-; .dw 0
+.dw RotoZoomMonoFB
+.dw RotoZoomInit
+.dw NullSub
+.dw 0
 
-; .dw VectorBalls
-; .dw VectorBallsInit
-; .dw SetDummySpriteTable
-; .dw 0
+.dw VectorBalls
+.dw VectorBallsInit
+.dw SetDummySpriteTable
+.dw 0
 
-; .dw PseudoMode7MonoFB
-; .dw PseudoMode7Init
-; .dw NullSub ;.dw ParticlesLoadVRAM
-; .dw 0
+.dw PseudoMode7MonoFB
+.dw PseudoMode7Init
+.dw NullSub
+.dw 0
 
 .dw Particles
 .dw ParticlesInitTitan
@@ -4125,8 +4151,7 @@ rst 0
 
 .bank 4 slot 1
 .org $0000
-.incbin "psg/2un_57.vgm" skip $6ac0
-;.incbin "psg/2un_57.vgm" skip $40 read $4000
+.incbin "psg/2un_57.vgm" skip $40 read $4000
 .bank 5 slot 1
 .org $0000
 .incbin "psg/2un_57.vgm" skip $4040
@@ -4144,7 +4169,7 @@ rst 0
 .incbin "psg/psg.bin" skip $0c000 read $4000
 .bank 10 slot 1
 .org $0000
-.incbin "psg/psg.bin" skip $10000 read $4000
+.incbin "psg/psg.bin" skip $10000
 .bank 11 slot 1
 .org $0000
-.incbin "psg/psg.bin" skip $14000
+;.incbin "psg/psg.bin" skip $14000
