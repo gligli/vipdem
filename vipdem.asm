@@ -143,6 +143,27 @@ banks 16
     jp nz,-
 .endm
 
+.macro CopyToVDPPCM
+; copies data to the VDP
+; parameters: hl = data address, de = data length
+; affects: a, hl, bc, de
+    ld b, 13
+    ld c, VDPData
+-:  outi
+
+    dec b
+    jp nz, +
+    ld b, 13
+    PlaySampleL
+    PlaySampleU    
++:
+
+    dec de
+    ld a,d
+    or e
+    jp nz,-
+.endm
+
 .macro PlaySampleSkew args skew
     ex af, af'
         ; this macro is 27 cycles when not playing
@@ -1585,8 +1606,6 @@ ParticlesInitGreets:
     jp ParticlesInit
 
 ParticlesInitTitan:
-    call ParticlesLoadVRAM
-    
     ; pcm playback
     exx
     ld c, 6
@@ -1599,6 +1618,8 @@ ParticlesInitTitan:
     out (PSGPort), a
     xor a
     out (PSGPort), a
+
+    call ParticlesLoadVRAM
 
     ld a, 69
     ld (RandSeed), a
@@ -1719,13 +1740,13 @@ ParticlesLoadVRAM:
     SetVDPAddress $0000 | VRAMWrite
     ld hl,StarsTiles
     ld de,StarsTilesSize
-    CopyToVDP
+    CopyToVDPPCM
     
     ; load tilemap (Stars)
     SetVDPAddress $3800 | VRAMWrite
     ld hl,StarsTileMap
     ld de,TileMapSize
-    CopyToVDP
+    CopyToVDPPCM
     
     ; Load palette (Stars)
     memcpy FadeinPalette, StarsPalette, TilePaletteSize
@@ -1737,7 +1758,7 @@ ParticlesLoadVRAM:
     SetVDPAddress $2000 | VRAMWrite
     ld hl,PartData
     ld de,PartSize
-    CopyToVDP
+    CopyToVDPPCM
 
     ; Load palette (VectorBalls)
     memcpy LocalPalette + TilePaletteSize, VBPalette, TilePaletteSize
