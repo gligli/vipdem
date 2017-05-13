@@ -500,12 +500,6 @@ main:
     or c
     jr nz, -
 
-    ; SAT address ($3f00)
-    ld a, $7f
-    out (VDPControl), a
-    ld a, $85
-    out (VDPControl), a
-
     call SetDummySpriteTable
     
     call EnsureFifty    
@@ -923,30 +917,30 @@ ClearTileMap:
 
 DetectTVType:
 ; Returns a=0 for NTSC, a=1 for PAL
-; uses a, hl, de
-    di             ; disable interrupts
-    ld a,%01100000 ; set VDP such that the screen is on
-    out ($bf),a    ; with VBlank interrupts enabled
-    ld a,$81
-    out ($bf),a
-    ld hl,$0000    ; init counter
--:  in a,($bf)     ; get VDP status
-    or a           ; inspect
-    jp p,-         ; loop until frame interrupt flag is set
--:  in a,($bf)     ; do the same again, in case we were unlucky and came in just
-    or a           ;   before the start of the VBlank with the flag already set
-    jp p,-
-    ; the VDP must now be at the start of the VBlank
--:  inc hl         ; (6 cycles) increment counter until interrupt flag comes on again
-    in a,($bf)     ; (11 cycles)
-    or a           ; (4 cycles)
-    jp p,-         ; (10 cycles)
-    xor a          ; reset carry flag, also set a=0
-    ld de,2048     ; see if hl is more or less than 2048
-    sbc hl,de
-    ret c          ; if less, return a=0
-    ld a,1
-    ret            ; if more or equal, return a=1
+-:
+    in a, (VDPScanline)
+    cp 192
+    jp nz, -
+    
+    ld b, 0
+    ld c, a
+-:
+    in a, (VDPScanline)
+    cp c
+    jp z, -
+    inc b
+    ld c, a
+    cp 0
+    jp nz, -    
+
+    ld a, b
+    cp 100
+    ld a, 0
+    jr c, +
+    inc a
++:
+
+    ret
     
 SATOuti:
     .repeat 256
@@ -1305,8 +1299,22 @@ EnsureFifty:
     
     ; Load palette (Background)
     memcpy LocalPalette, FiftyPalette, TilePaletteSize
+    memcpy LocalPalette + TilePaletteSize, FiftyPalette, TilePaletteSize
     
     call UploadPalette
+    
+    ; turn screen on
+    ld a, %1000000
+;          ||||||`- Zoomed sprites -> 16x16 pixels
+;          |||||`-- Doubled sprites -> 2 tiles per sprite, 8x16
+;          ||||`--- Mega Drive mode 5 enable
+;          |||`---- 30 row/240 line mode
+;          ||`----- 28 row/224 line mode
+;          |`------ VBlank interrupts
+;          `------- Enable display
+    out (VDPControl), a
+    ld a, $81
+    out (VDPControl), a    
 
 -:
     jp -
@@ -3959,7 +3967,7 @@ PSGInitData:
 PSGInitDataEnd:
 
 VDPInitData:
-.db $14,$80,$00,$81,$ff,$82,$51,$85,$ff,$86,$ff,$87,$00,$88,$00,$89,$ff,$8a
+.db $14,$80,$00,$81,$ff,$82,$ff,$85,$ff,$86,$ff,$87,$00,$88,$00,$89,$ff,$8a
 VDPInitDataEnd:
 
 RobFlyFlamesPal:
