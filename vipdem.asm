@@ -1865,13 +1865,13 @@ PartLoop:
     ld hl, PartInitialBeat
     sub (hl)
     cp PartInitialBeatWait
-    
+
     jp c, @NoTrans
     cp PartEndBeat
     jp z, NextEffect_JP
     
 ; c166
-
+    PlaySampleL
     ; apply tranformations
     
     ld a, (PartMode)
@@ -1886,7 +1886,7 @@ PartLoop:
 +:    
 
 ; c304  
-    PlaySampleL
+
 ; c-20
 
     ; x
@@ -1937,7 +1937,7 @@ PartLoop:
 +:
 
 ; c138
-
+    PlaySampleU
     ; save xyl
     
     ld h, >PartXH
@@ -1961,7 +1961,7 @@ PartLoop:
     ld (hl), a ; life
     
 ; c729
-    PlaySampleU
+
     
 @NoTransEnd:
     
