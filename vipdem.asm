@@ -3898,9 +3898,9 @@ PM7SequenceEnd:
 .org $3a00
 EffectsSequence:
 
-.dw Intro
-.dw IntroInit
-.dw SetDummySpriteTable
+.dw Intro               ; update sub
+.dw IntroInit           ; init sub    
+.dw SetDummySpriteTable ; finalize sub
 .dw 0
 
 .dw RotoZoomMonoFB
@@ -4197,6 +4197,3 @@ rst 0
 .bank 10 slot 1
 .org $0000
 .incbin "psg/psg.bin" skip $10000
-.bank 11 slot 1
-.org $0000
-;.incbin "psg/psg.bin" skip $14000
