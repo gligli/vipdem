@@ -295,30 +295,6 @@ banks 16
     jp (hl)
 .endm
 
-.macro RotoZoomFromRotScale args toV, readScl
-    .ifeq readScl 1
-        ld de, (RotoScl) ; vy
-    .endif
-
-    ld bc, (RotoRot) ; vx
-    GetCosC
-    call FPMultiplySignedAByDE    
-    push hl
-    
-    ld bc, (RotoRot) ; vx
-    GetSinC
-    call FPMultiplySignedAByDE    
-    ld d, h
-    ld e, l
-    
-    pop bc
-
-    .ifeq toV 1
-        ld (RotoVX), bc
-        ld (RotoVY), de
-    .endif
-.endm
-
 .macro memcpy args dest, src, len
     ld de, dest
     ld hl, src
@@ -1256,13 +1232,6 @@ FadeinSlowerBRG:
     ret nz
     call FadeinLocalPaletteBRG
     jp UploadPalette
-    
-; FadeinBeat:
-    ; call Fadein
-    ; ld a, (BeatCounter)
-    ; or a
-    ; jp z, NextEffect_JP
-    ; ret
     
 FadeoutSloBeat:
     WaitVBlank 0
@@ -2597,6 +2566,30 @@ VBLoop:
 ;==============================================================
 ; RotoZoom code
 ;==============================================================
+
+.macro RotoZoomFromRotScale args toV, readScl
+    .ifeq readScl 1
+        ld de, (RotoScl) ; vy
+    .endif
+
+    ld bc, (RotoRot) ; vx
+    GetCosC
+    call FPMultiplySignedAByDE    
+    push hl
+    
+    ld bc, (RotoRot) ; vx
+    GetSinC
+    call FPMultiplySignedAByDE    
+    ld d, h
+    ld e, l
+    
+    pop bc
+
+    .ifeq toV 1
+        ld (RotoVX), bc
+        ld (RotoVY), de
+    .endif
+.endm
 
 .macro RotoZoomX args times, other
     ; x offset
