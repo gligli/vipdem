@@ -10,6 +10,8 @@ Plays on a 50Hz Sega Master System with its 3.5Mhz Z80.
 Most emulators should be able to play it perfectly (Emulicious, MEKA, Kega Fusion, ...).
 Make sure to set them to PAL 50Hz.
 
+Compile with a recent WLA-DX ( https://github.com/vhelin/wla-dx )
+
 Download: http://sfx.gligli.free.fr/smsdev/blast%21_-_the_synchrobots.zip
 Pouet: http://www.pouet.net/prod.php?which=70025
 Youtube: https://www.youtube.com/watch?v=I742MvGhkME&t=29s
