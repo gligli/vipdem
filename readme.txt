@@ -14,5 +14,5 @@ Compile with a recent WLA-DX ( https://github.com/vhelin/wla-dx )
 
 Download: http://sfx.gligli.free.fr/smsdev/blast%21_-_the_synchrobots.zip
 Pouet: http://www.pouet.net/prod.php?which=70025
-Youtube: https://www.youtube.com/watch?v=I742MvGhkME
+Youtube: https://www.youtube.com/watch?v=hjCClIPXcNw
 Licence: GNU GPL v3
